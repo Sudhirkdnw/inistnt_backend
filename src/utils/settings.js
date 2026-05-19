@@ -1,0 +1,116 @@
+const Setting = require("../models/settings.model");
+
+let cachedSettings = {};
+
+/**
+ * Synchronize database with defaults without slowing down runtime requests
+ */
+const syncSettings = async () => {
+    try {
+        const defaults = [
+            { key: 'platform_name', value: 'Social Mini', description: 'The public name of the platform', category: 'General' },
+            { key: 'platform_description', value: 'College Confession & Dating Platform', description: 'SEO description of the site', category: 'General' },
+            { key: 'support_email', value: 'support@inistnt.in', description: 'Official contact email for users', category: 'General' },
+            { key: 'support_phone', value: '+1 (555) 000-0000', description: 'Support contact number', category: 'General' },
+            { key: 'company_name', value: 'Social Mini Inc.', description: 'Legal company name', category: 'General' },
+            { key: 'company_address', value: '123 Campus Lane, Education City', description: 'Business address', category: 'General' },
+            { key: 'default_language', value: 'en', description: 'System default language', category: 'General' },
+            { key: 'default_currency', value: 'USD', description: 'Platform currency code', category: 'General' },
+            { key: 'timezone', value: 'UTC', description: 'System default timezone', category: 'General' },
+            { key: 'date_format', value: 'MMM DD, YYYY', description: 'Display date format', category: 'General' },
+            { key: 'maintenance_mode', value: false, description: 'Disable all user interactions', category: 'Security' },
+            { key: 'maintenance_message', value: 'We are performing system upgrades. Please check back later.', category: 'Security' },
+            { key: 'new_registrations', value: true, category: 'Security' },
+            { key: 'registration_message', value: 'Welcome!', category: 'Security' },
+            { key: 'allowed_email_domains', value: '*', category: 'Security' },
+            { key: 'blocked_email_domains', value: '', category: 'Security' },
+            { key: 'otp_verification', value: false, category: 'Security' },
+            { key: 'session_timeout', value: 24, category: 'Security' },
+            { key: 'ai_moderation', value: true, category: 'Moderation' },
+            { key: 'ai_toxicity_threshold', value: 0.7, category: 'Moderation' },
+            { key: 'auto_hide_toxic', value: true, category: 'Moderation' },
+            { key: 'anonymous_confessions', value: true, category: 'Content' },
+            { key: 'max_confession_length', value: 2000, category: 'Content' },
+            { key: 'confession_approval_mode', value: false, category: 'Content' },
+            { key: 'homepage_banner_text', value: 'The safest place for your secrets.', category: 'Content' },
+            { key: 'footer_text', value: '© 2026 Social Mini. All rights reserved.', category: 'Content' },
+            { key: 'anonymous_chat', value: true, category: 'Features' },
+            { key: 'dating_module', value: true, category: 'Features' },
+            { key: 'min_dating_photos', value: 1, category: 'Features' },
+            { key: 'app_logo', value: '', category: 'Branding' },
+            { key: 'favicon', value: '', category: 'Branding' },
+            { key: 'accent_color', value: '#0095f6', category: 'Branding' },
+            { key: 'secondary_color', value: '#1a1a1a', category: 'Branding' },
+            { key: 'dark_mode_default', value: true, category: 'Branding' },
+
+            // Mail Settings
+            { key: 'mail_protocol', value: 'smtp', description: 'Email delivery protocol (smtp/sendmail)', category: 'Mail' },
+            { key: 'mail_host', value: 'smtp.gmail.com', description: 'SMTP server host', category: 'Mail' },
+            { key: 'mail_port', value: 587, description: 'SMTP server port (usually 587 or 465)', category: 'Mail' },
+            { key: 'mail_encryption', value: 'tls', description: 'Encryption method (tls/ssl/none)', category: 'Mail' },
+            { key: 'mail_username', value: '', description: 'SMTP username/email', category: 'Mail' },
+            { key: 'mail_password', value: '', description: 'SMTP password (stored encrypted)', category: 'Mail' },
+            { key: 'mail_from_address', value: 'support@inistnt.in', description: 'Sender email address', category: 'Mail' },
+            { key: 'mail_from_name', value: 'Social Mini', description: 'Sender display name', category: 'Mail' },
+            { key: 'mail_reply_to', value: 'support@inistnt.in', description: 'Reply-to email address', category: 'Mail' }
+        ];
+
+        // Bulk upsert logic
+        const bulkOps = defaults.map(d => ({
+            updateOne: {
+                filter: { key: d.key },
+                update: {
+                    $setOnInsert: { value: d.value },
+                    $set: { category: d.category, description: d.description }
+                },
+                upsert: true
+            }
+        }));
+
+        await Setting.bulkWrite(bulkOps);
+        console.log("✅ System configuration synchronized with defaults");
+    } catch (err) {
+        console.error("❌ Failed to sync settings:", err.message);
+    }
+};
+
+/**
+ * Loads all settings from DB into memory
+ */
+const loadSettings = async () => {
+    try {
+        await syncSettings(); // Run once at boot
+        const settings = await Setting.find();
+        cachedSettings = settings.reduce((acc, s) => {
+            acc[s.key] = s.value;
+            return acc;
+        }, {});
+        console.log("✅ System settings loaded into memory cache");
+    } catch (err) {
+        console.error("❌ Failed to load settings:", err.message);
+    }
+};
+
+/**
+ * Get a setting value from cache
+ * @param {string} key 
+ * @param {any} defaultValue 
+ */
+const getSetting = (key, defaultValue = null) => {
+    return cachedSettings[key] !== undefined ? cachedSettings[key] : defaultValue;
+};
+
+/**
+ * Update a setting in DB and sync cache
+ * @param {string} key 
+ * @param {any} value 
+ */
+const updateSettingInCache = (key, value) => {
+    cachedSettings[key] = value;
+};
+
+module.exports = {
+    loadSettings,
+    getSetting,
+    updateSettingInCache
+};

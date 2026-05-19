@@ -1,0 +1,266 @@
+const dotenv = require('dotenv');
+const path = require('path');
+
+// Load environment variables dynamically based on NODE_ENV
+const nodeEnv = process.env.NODE_ENV || 'development';
+dotenv.config({ path: path.resolve(__dirname, `.env.${nodeEnv}`) });
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+
+const mongoose = require('mongoose');
+const app = require('./src/app');
+const connectDB = require('./src/db/db');
+const http = require('http');
+const { Server } = require("socket.io");
+const { createAdapter } = require("@socket.io/redis-adapter");
+const { redisClient, redisSubscriber, redisReady } = require('./src/utils/redis');
+
+connectDB();
+
+const PORT = process.env.PORT || 3000;
+const server = http.createServer(app);
+
+// Global Error Handlers to prevent silent crashes
+process.on('uncaughtException', (err) => {
+    console.error('🔥 UNCAUGHT EXCEPTION:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('🔥 UNHANDLED REJECTION:', reason);
+});
+
+const ALLOWED_ORIGINS = [
+    process.env.CLIENT_URL,
+    process.env.ADMIN_URL,
+    ...(process.env.CORS_ALLOWED_ORIGINS ? process.env.CORS_ALLOWED_ORIGINS.split(',') : [])
+].filter(Boolean).map(o => o.trim());
+
+const io = new Server(server, {
+    cors: {
+        origin: (origin, callback) => {
+            if (!origin) return callback(null, true);
+            const isAllowed = ALLOWED_ORIGINS.some(allowed => 
+                origin === allowed || 
+                origin.startsWith(allowed)
+            ) || origin.endsWith('.vercel.app');
+
+            if (isAllowed) {
+                return callback(null, true);
+            }
+            callback(new Error(`CORS: origin ${origin} not allowed`));
+        },
+        methods: ["GET", "POST"],
+        credentials: true
+    }
+});
+
+app.set("io", io);
+
+const InfrastructureLogger = require('./src/utils/infrastructureLogger');
+InfrastructureLogger.setSocketIO(io);
+
+const onlineUsers = new Map();
+io._onlineUsers = onlineUsers;
+
+io.on("connection", (socket) => {
+    InfrastructureLogger.socket("INFO", `Client connected to Socket.IO. Socket ID: ${socket.id}`);
+
+    socket.on("join-monitoring", (passedToken) => {
+        try {
+            const jwt = require("jsonwebtoken");
+            const userModel = require("./src/models/user.model");
+            
+            // Multi-channel fallback: parameter, handshake cookies, handshake auth, or query
+            let token = passedToken;
+            if (!token && socket.handshake.headers.cookie) {
+                const cookies = socket.handshake.headers.cookie.split(';').reduce((acc, c) => {
+                    const [key, ...val] = c.trim().split('=');
+                    if (key) acc[key] = val.join('=');
+                    return acc;
+                }, {});
+                token = cookies.token;
+            }
+            if (!token) {
+                token = socket.handshake.auth?.token || socket.handshake.query?.token;
+            }
+
+            if (!token) {
+                return socket.emit("monitoring-status", { status: "failed", message: "Access Denied: Authentication token required." });
+            }
+
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            userModel.findById(decoded.id).then(user => {
+                if (user && user.role === "admin") {
+                    socket.join("admin:monitoring");
+                    socket.emit("monitoring-status", { status: "connected", message: "Subscribed to real-time infrastructure logs." });
+                    InfrastructureLogger.socket("SUCCESS", `Admin user "${user.username}" (ID: ${user._id}) joined real-time monitoring channel.`, {
+                        socketId: socket.id
+                    });
+                } else {
+                    socket.emit("monitoring-status", { status: "failed", message: "Unauthorized: Admin access required." });
+                    InfrastructureLogger.security("WARNING", `Unauthorized attempt to join monitoring room from Socket ID: ${socket.id}`, {
+                        userId: user ? user._id : null,
+                        username: user ? user.username : "unknown"
+                    });
+                }
+            });
+        } catch (err) {
+            socket.emit("monitoring-status", { status: "failed", message: "Invalid authentication token." });
+            InfrastructureLogger.security("WARNING", `Failed validation for monitoring subscription on Socket ID: ${socket.id}. Error: ${err.message}`);
+        }
+    });
+
+    socket.on("setup", (userId) => {
+        const uid = String(userId);
+        socket.join(uid);
+        onlineUsers.set(uid, socket.id);
+        socket.userId = uid;
+        io.emit("online-users", Array.from(onlineUsers.keys()));
+        // console.log("Online users:", Array.from(onlineUsers.keys()));
+        console.log("Online users:")
+    });
+
+    socket.on("join-conversation", async (conversationId) => {
+        socket.join(conversationId);
+        try {
+            const conv = await require('./src/models/conversation.model').findById(conversationId).select('isAnonymousChat anonymousIdentities');
+            if (conv && conv.isAnonymousChat) {
+                if (!io._anonymousRooms) io._anonymousRooms = new Map();
+                // Store identities Map as object to easily access by string key
+                const identitiesObj = {};
+                if (conv.anonymousIdentities && typeof conv.anonymousIdentities.forEach === 'function') {
+                    conv.anonymousIdentities.forEach((val, key) => identitiesObj[key] = val);
+                } else if (conv.anonymousIdentities) {
+                    Object.assign(identitiesObj, conv.anonymousIdentities);
+                }
+                io._anonymousRooms.set(conversationId, identitiesObj);
+            }
+        } catch (e) {
+            console.error("Error caching anonymous identities:", e);
+        }
+        console.log(`Socket ${socket.id} joined conversation ${conversationId}`);
+    });
+
+    socket.on("leave-conversation", (conversationId) => {
+        socket.leave(conversationId);
+    });
+
+    socket.on("typing", ({ conversationId, username }) => {
+        let emitUsername = username;
+        if (io._anonymousRooms && io._anonymousRooms.has(conversationId)) {
+            const identities = io._anonymousRooms.get(conversationId);
+            emitUsername = identities[socket.userId] || "Anonymous User";
+        }
+        socket.to(conversationId).emit("user-typing", { conversationId, username: emitUsername });
+    });
+
+    socket.on("stop-typing", ({ conversationId, username }) => {
+        let emitUsername = username;
+        if (io._anonymousRooms && io._anonymousRooms.has(conversationId)) {
+            const identities = io._anonymousRooms.get(conversationId);
+            emitUsername = identities[socket.userId] || "Anonymous User";
+        }
+        socket.to(conversationId).emit("user-stopped-typing", { conversationId, username: emitUsername });
+    });
+
+    socket.on("disconnect", () => {
+        console.log("User disconnected:", socket.id);
+        if (socket.userId) {
+            onlineUsers.delete(socket.userId);
+            io.emit("online-users", Array.from(onlineUsers.keys()));
+        }
+    });
+});
+
+// ── Graceful Shutdown ──────────────────────────────────────────
+const gracefulShutdown = async (signal) => {
+    InfrastructureLogger.server("WARNING", `${signal} signal received. Initiating graceful server shutdown process...`);
+
+    // Stop accepting new socket connections
+    io.close();
+
+    // Stop email system background queues
+    try {
+        const { shutdownEmailSystem } = require('./src/services/emailService');
+        shutdownEmailSystem();
+        InfrastructureLogger.email("INFO", "Email queue background worker stopped successfully.");
+    } catch (err) {
+        InfrastructureLogger.email("ERROR", `Failed to stop email queue worker: ${err.message}`);
+    }
+
+    // Close server to stop new HTTP requests
+    server.close(async () => {
+        InfrastructureLogger.server("INFO", "HTTP API gateway successfully closed.");
+
+        try {
+            // Close MongoDB connection
+            await mongoose.connection.close();
+            InfrastructureLogger.database("INFO", "MongoDB connection terminated cleanly.");
+
+            // Close Redis connections
+            if (redisClient) {
+                await redisClient.quit();
+                await redisSubscriber.quit();
+                InfrastructureLogger.redis("INFO", "Redis cache and pub/sub channels terminated cleanly.");
+            }
+
+            InfrastructureLogger.server("SUCCESS", "Graceful shutdown complete. Process exiting.");
+            process.exit(0);
+        } catch (err) {
+            InfrastructureLogger.server("CRITICAL", `Error occurred during graceful shutdown sequence: ${err.message}`, { error: err.stack });
+            process.exit(1);
+        }
+    });
+
+    // If shutdown takes too long, force exit
+    setTimeout(() => {
+        InfrastructureLogger.server("CRITICAL", "Shutdown sequence timed out. Forcing hard termination.");
+        process.exit(1);
+    }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+const { loadSettings } = require('./src/utils/settings');
+const { initCronJobs } = require('./src/service/cron.service');
+const { initEmailSystem } = require('./src/services/emailService');
+
+const startServer = async () => {
+    try {
+        await loadSettings();
+        InfrastructureLogger.server("SUCCESS", "System settings successfully synchronized and loaded into memory.");
+    } catch (err) {
+        InfrastructureLogger.server("CRITICAL", `Failed to synchronize system settings: ${err.message}`);
+    }
+
+    try {
+        initCronJobs();
+        InfrastructureLogger.server("INFO", "System cron jobs initialized successfully.");
+    } catch (err) {
+        InfrastructureLogger.server("ERROR", `Failed to initialize system cron jobs: ${err.message}`);
+    }
+    
+    // Initialize background email system queue and worker
+    try {
+        await initEmailSystem();
+        InfrastructureLogger.email("SUCCESS", "Asynchronous email worker infrastructure initialized successfully.");
+    } catch (err) {
+        InfrastructureLogger.email("CRITICAL", `Asynchronous email worker infrastructure failed to initialize: ${err.message}`);
+        process.exit(1);
+    }
+
+    if (redisClient && redisSubscriber) {
+        try {
+            await redisReady;
+            io.adapter(createAdapter(redisClient, redisSubscriber));
+            InfrastructureLogger.redis("SUCCESS", "Socket.IO using Redis adapter (cluster-ready).");
+        } catch (err) {
+            InfrastructureLogger.redis("WARNING", `Redis adapter initialization failed. Falling back to memory-only: ${err.message}`);
+        }
+    }
+
+    server.listen(PORT, () => {
+        InfrastructureLogger.server("SUCCESS", `FriendZone Enterprise Node Server is listening on port ${PORT} (Enterprise Cluster Mode)`);
+    });
+};
+
+startServer();

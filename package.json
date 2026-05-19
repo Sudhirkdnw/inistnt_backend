@@ -1,0 +1,46 @@
+{
+  "name": "social_mini",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest --runInBand --forceExit",
+    "test:auth": "jest --runInBand --forceExit tests/auth.test.js",
+    "test:messages": "jest --runInBand --forceExit tests/messages.test.js",
+    "test:watch": "jest --runInBand --watch",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@google/genai": "^1.48.0",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.10.0",
+    "compression": "^1.8.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "geoip-lite": "^1.4.10",
+    "groq-sdk": "^1.1.2",
+    "helmet": "^8.1.0",
+    "ioredis": "^5.10.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.3.3",
+    "multer": "^2.1.1",
+    "node-cache": "^5.1.2",
+    "node-cron": "^4.2.1",
+    "resend": "^6.12.3",
+    "socket.io": "^4.8.3",
+    "ua-parser-js": "^2.0.9"
+  },
+  "devDependencies": {
+    "jest": "^30.3.0",
+    "mongodb-memory-server": "^11.1.0",
+    "socket.io-client": "^4.8.3",
+    "supertest": "^7.2.2"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "ignore": [
+    "admin/*",
+    "client/*",
+    "node_modules/*",
+    "*.test.js",
+    "fixtures/*",
+    "*.txt",
+    "*.md"
+  ],
+  "ext": "js,json,env",
+  "delay": "2500"
+}

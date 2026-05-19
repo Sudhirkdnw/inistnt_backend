@@ -1,0 +1,117 @@
+const express = require('express');
+const cookieParser = require("cookie-parser");
+const compression = require('compression');
+const helmet = require('helmet');
+const path = require('path');
+
+const authRoutes = require('./routes/auth.routes');
+const confessionRoutes = require('./routes/confession.routes');
+const userRoutes = require('./routes/user.routes');
+const storyRoutes = require('./routes/story.routes');
+const notificationRoutes = require('./routes/notification.routes');
+const adminRoutes = require('./routes/admin.routes');
+const aiRoutes = require('./routes/ai.routes');
+const chatRoutes = require('./routes/chat.routes');
+const datingRoutes = require('./routes/dating.routes');
+const reportRoutes = require('./routes/report.routes');
+const monitoringRoutes = require('./routes/monitoring.routes');
+const cors = require('cors');
+
+const app = express();
+app.use(express.static("public"));
+
+
+// Trust proxy for correct IP detection in rate limiting (AWS, Nginx, etc.)
+app.set('trust proxy', 1);
+
+// Dynamic dotenv load safeguard for isolated imports (like Jest running app.js directly)
+if (!process.env.MONGO_URI) {
+    const dotenv = require('dotenv');
+    const path = require('path');
+    const nodeEnv = process.env.NODE_ENV || 'development';
+    dotenv.config({ path: path.resolve(__dirname, `../.env.${nodeEnv}`) });
+    dotenv.config({ path: path.resolve(__dirname, '../.env') });
+}
+
+// CORS — allow main client, admin panel (dev), and production origins
+const ALLOWED_ORIGINS = [
+    process.env.CLIENT_URL,
+    process.env.ADMIN_URL,
+    ...(process.env.CORS_ALLOWED_ORIGINS ? process.env.CORS_ALLOWED_ORIGINS.split(',') : [])
+].filter(Boolean).map(o => o.trim());
+
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+
+        // Check if origin matches allowed origins or is a Vercel preview (optional)
+        const isAllowed = ALLOWED_ORIGINS.some(allowed => 
+            origin === allowed || 
+            origin.startsWith(allowed)
+        ) || origin.endsWith('.vercel.app');
+
+        if (isAllowed) {
+            return callback(null, true);
+        }
+        callback(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+}));
+
+// Security headers
+app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
+
+// Gzip compress all responses — saves ~70% bandwidth
+app.use(compression({ level: 6, threshold: 1024 }));
+
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+const maintenanceMiddleware = require('./middlewares/maintenanceMiddleware');
+const authMiddleware = require('./middlewares/authmiddleware');
+
+// For routes that need to know user role during maintenance, we need auth first.
+// But we also want to block guests. 
+// I'll make maintenanceMiddleware handle both.
+app.use(maintenanceMiddleware);
+
+const settingsRoutes = require("./routes/settings.routes");
+
+const rateLimiter = require('./middlewares/rateLimiter');
+
+// API Routes
+app.use("/api/auth", rateLimiter({ windowMs: 15 * 60 * 1000, max: 100, prefix: 'auth' }), authRoutes);
+app.use("/api/confessions", confessionRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/stories", storyRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/ai", aiRoutes);
+app.use("/api/chat", chatRoutes);
+app.use("/api/dating", datingRoutes);
+app.use("/api/reports", reportRoutes);
+app.use("/api/settings", settingsRoutes);
+app.use("/api/monitoring", monitoringRoutes);
+
+app.get("/api/health", (req, res) => {
+    res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// Serve frontend in production (SPA catch-all)
+if (process.env.NODE_ENV === "production") {
+
+    app.use(express.static(path.join(__dirname, "../public")));
+
+    app.use((req, res) => {
+        res.sendFile(
+            path.join(__dirname, "../public/index.html")
+        );
+    });
+}
+
+
+
+module.exports = app;
