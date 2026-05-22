@@ -6,6 +6,7 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const { getRequestMetadata, checkSuspicious } = require("../service/security.service");
 const InfrastructureLogger = require("../utils/infrastructureLogger");
+const sharp = require("sharp");
 
 const isProduction = process.env.NODE_ENV === "production";
 const getCookieOptions = (maxAge = 7 * 24 * 60 * 60 * 1000) => ({
@@ -114,12 +115,18 @@ async function registerController(req, res) {
                 return res.status(400).json({ message: "ID Card must be an image file." });
             }
 
-            const base64 = req.file.buffer.toString("base64");
-            idCardImage = `data:${req.file.mimetype};base64,${base64}`;
+            const compressedBuffer = await sharp(req.file.buffer)
+                .resize({ width: 800, withoutEnlargement: true })
+                .jpeg({ quality: 80 })
+                .toBuffer();
+
+            const base64 = compressedBuffer.toString("base64");
+            idCardImage = `data:image/jpeg;base64,${base64}`;
             
             idCardMetadata = {
-                mimeType: req.file.mimetype,
-                size: req.file.size,
+                mimeType: "image/jpeg",
+                size: compressedBuffer.length,
+                originalSize: req.file.size,
                 uploadedAt: new Date()
             };
 
