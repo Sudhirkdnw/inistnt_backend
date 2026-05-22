@@ -150,6 +150,10 @@ async function swipeRight(req, res) {
 
         // Check if they already liked me back → MATCH!
         let isMatch = false;
+        
+        // ── Populate the current user for notification message ──
+        const meUser = await userModel.findById(userId).select("username fullName avatar");
+
         if (theirProfile.likedUsers.includes(userId)) {
             // Create mutual match
             if (!myProfile.matches.includes(targetUserId)) {
@@ -162,9 +166,6 @@ async function swipeRight(req, res) {
             }
             isMatch = true;
 
-            // ── Populate the current user for notification message ──
-            const meUser = await userModel.findById(userId).select("username fullName avatar");
-
             // 1️⃣  Save a persistent DB notification for the other user
             await notificationModel.create({
                 recipient: targetUserId,
@@ -176,8 +177,6 @@ async function swipeRight(req, res) {
             // 2️⃣  Emit a real-time socket event so they see it instantly
             const io = req.app.get("io");
             if (io) {
-                // We need the socket ID of the target user.
-                // server.js stores onlineUsers Map on the io object itself.
                 const onlineUsers = io._onlineUsers || new Map();
                 const targetSocketId = onlineUsers.get(String(targetUserId));
                 const payload = {
@@ -193,11 +192,40 @@ async function swipeRight(req, res) {
                 };
 
                 if (targetSocketId) {
-                    // User is online — send directly
                     io.to(targetSocketId).emit("dating-match", payload);
                 } else {
-                    // Broadcast anyway (they'll pick it up via notification badge)
                     io.emit(`dating-match-${targetUserId}`, payload);
+                }
+            }
+        } else {
+            // Not a match yet. Send a dating_like notification
+            await notificationModel.create({
+                recipient: targetUserId,
+                sender: userId,
+                type: "dating_like",
+                message: `${meUser.username} is interested in you! 💘`
+            });
+
+            const io = req.app.get("io");
+            if (io) {
+                const onlineUsers = io._onlineUsers || new Map();
+                const targetSocketId = onlineUsers.get(String(targetUserId));
+                const payload = {
+                    type: "dating_like",
+                    sender: {
+                        _id: meUser._id,
+                        username: meUser.username,
+                        fullName: meUser.fullName,
+                        avatar: meUser.avatar
+                    },
+                    message: `${meUser.username} is interested in you! 💘`,
+                    createdAt: new Date().toISOString()
+                };
+
+                if (targetSocketId) {
+                    io.to(targetSocketId).emit("dating-like", payload);
+                } else {
+                    io.emit(`dating-like-${targetUserId}`, payload);
                 }
             }
         }
@@ -315,7 +343,7 @@ async function uploadDatingPhoto(req, res) {
         }
 
         const photoUrl = await uploadImage(req.file.buffer, {
-            folder: 'friendzone/dating',
+            folder: 'inistnt/dating',
             transformation: [
                 { width: 1000, height: 1200, crop: 'fill', gravity: 'auto' } // High quality portrait crop
             ]

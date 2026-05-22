@@ -86,6 +86,34 @@ async function getOrCreateDM(req, res) {
             return res.status(400).json({ message: "Cannot create DM with yourself" });
         }
 
+        // Fetch target user to check privacy
+        const targetUser = await User.findById(userId).select("isPrivate followers following");
+        if (!targetUser) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // ── Private Account Check ────────────────────────────────────────────
+        // If the target account is private, only allow DM if:
+        // 1. Target user follows the requester (they follow me back), OR
+        // 2. Requester follows target user (I follow them — meaning they accepted/they're public to me)
+        // In practice: both users must follow each other for a private user to be messaged
+        if (targetUser.isPrivate) {
+            const targetFollowsMe = targetUser.following.some(
+                (id) => id.toString() === currentUserId.toString()
+            );
+            const iFollowTarget = targetUser.followers.some(
+                (id) => id.toString() === currentUserId.toString()
+            );
+
+            if (!targetFollowsMe || !iFollowTarget) {
+                return res.status(403).json({
+                    message: "This account is private. You can only message users who follow you back.",
+                    isPrivate: true
+                });
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         // Check if DM already exists
         let conversation = await Conversation.findOne({
             type: "dm",
@@ -105,6 +133,7 @@ async function getOrCreateDM(req, res) {
         res.status(500).json({ message: error.message });
     }
 }
+
 async function startConfessionChat(req, res) {
     try {
         const { confessionId } = req.params;

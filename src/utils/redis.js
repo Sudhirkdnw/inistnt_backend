@@ -20,11 +20,14 @@ if (REDIS_URL) {
         // DO NOT set to false: the Socket.IO adapter calls psubscribe on init
         // before the TCP connection is established, causing a crash.
         lazyConnect: false,
+        pingInterval: 10000, // Sends PING at app layer every 10s (crucial for Upstash/cloud Redis)
+        family: 0, // Auto-detect IPv4/IPv6
+        maxRetriesPerRequest: null, // Critical for long-running pub/sub & socket.io
         retryStrategy: (times) => {
-            if (times > 5) return null; // Give up after 5 retries (~10s)
-            return Math.min(times * 500, 3000);
+            if (times > 10) return null; // Increased to 10 retries
+            return Math.min(times * 1000, 5000); // Backoff up to 5s
         },
-        tls: REDIS_URL.startsWith('rediss://') ? {} : undefined, // TLS for rediss://
+        tls: REDIS_URL.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined, // Allow self-signed/cloud certificates
     };
 
     redisClient     = new Redis(REDIS_URL, options);

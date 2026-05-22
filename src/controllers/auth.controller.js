@@ -7,12 +7,18 @@ const crypto = require("crypto");
 const { getRequestMetadata, checkSuspicious } = require("../service/security.service");
 const InfrastructureLogger = require("../utils/infrastructureLogger");
 
+const isProduction = process.env.NODE_ENV === "production";
+const getCookieOptions = (maxAge = 7 * 24 * 60 * 60 * 1000) => ({
+    httpOnly: true,
+    maxAge,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax"
+});
+
 async function sendOtpController(req, res) {
-    console.log(`➡️ [API Route Execution] sendOtpController called with email: ${req.body?.email}`);
     try {
         const { email } = req.body;
         if (!email) {
-            console.warn("⚠️ [sendOtpController] Missing email field in request body");
             return res.status(400).json({ message: "Email is required" });
         }
 
@@ -20,7 +26,6 @@ async function sendOtpController(req, res) {
         const eduDomains = [".edu", ".ac.in", ".edu.in", ".ac.uk", ".edu.au", ".edu.pk"];
         const isEduEmail = eduDomains.some(d => email.toLowerCase().endsWith(d));
         if (!isEduEmail) {
-            console.warn(`⚠️ [sendOtpController] Non-educational email rejection: ${email}`);
             return res.status(400).json({ message: "Must be a valid college email (.edu, .ac.in, etc.)" });
         }
 
@@ -28,7 +33,6 @@ async function sendOtpController(req, res) {
         let otp;
         try {
             otp = Math.floor(100000 + Math.random() * 900000).toString();
-            console.log(`🔑 [sendOtpController] Generated 6-digit verification token (OTP) for ${email}: ${otp}`);
         } catch (tokenErr) {
             console.error("❌ [sendOtpController] Failed to generate OTP:", tokenErr.message);
             throw new Error(`Token generation failed: ${tokenErr.message}`);
@@ -39,13 +43,9 @@ async function sendOtpController(req, res) {
         await otpModel.create({ email: email.toLowerCase(), otp });
 
         // Send email in background asynchronously (non-blocking)
-        console.log(`📨 [sendOtpController] Queuing OTP email delivery for: ${email}`);
         sendVerificationEmail(email.toLowerCase(), otp, email.split('@')[0])
-            .then(() => {
-                console.log(`📩 [sendOtpController] Background verification email successfully queued for: ${email}`);
-            })
             .catch((err) => {
-                console.error(`❌ [sendOtpController] Failed to queue background verification email for ${email}:`, err.message);
+                console.error(`❌ [sendOtpController] Failed to queue verification email for ${email}:`, err.message);
             });
 
         InfrastructureLogger.auth("INFO", `OTP verification code requested for college email: ${email}`, { email });
@@ -202,14 +202,11 @@ async function registerController(req, res) {
         if (resolvedMethod === "EMAIL" || process.env.NODE_ENV === "test") {
             const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-            res.cookie("token", token, {
-                httpOnly: true,
-                maxAge: 7 * 24 * 60 * 60 * 1000,
-                sameSite: "lax"
-            });
+            res.cookie("token", token, getCookieOptions());
 
             return res.status(201).json({
                 message: "Account created & verified with college email!",
+                token,
                 user: {
                     _id: user._id,
                     username: user.username,
@@ -315,11 +312,7 @@ async function loginController(req, res) {
 
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-        res.cookie("token", token, {
-            httpOnly: true,
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-            sameSite: "lax"
-        });
+        res.cookie("token", token, getCookieOptions());
 
         InfrastructureLogger.auth("SUCCESS", `User login successful: "${user.username}" (Role: ${user.role})`, {
             userId: user._id,
@@ -348,7 +341,7 @@ async function loginController(req, res) {
 }
 
 async function logoutController(req, res) {
-    res.cookie("token", "", { maxAge: 0 });
+    res.cookie("token", "", getCookieOptions(0));
     res.status(200).json({ message: "Logged out successfully" });
 }
 
@@ -365,11 +358,9 @@ async function getMeController(req, res) {
 }
 
 async function forgotPasswordController(req, res) {
-    console.log(`➡️ [API Route Execution] forgotPasswordController called with email: ${req.body?.email}`);
     try {
         const { email } = req.body;
         if (!email) {
-            console.warn("⚠️ [forgotPasswordController] Missing email field in request body");
             return res.status(400).json({ message: "Email is required" });
         }
 
@@ -378,12 +369,10 @@ async function forgotPasswordController(req, res) {
         const genericMessage = "If an account with that email exists, a reset link has been sent.";
 
         if (!user) {
-            console.log(`ℹ️ [forgotPasswordController] Email ${email} not found. Returning generic response.`);
             return res.status(200).json({ message: genericMessage });
         }
 
         if (!user.isEmailVerified) {
-            console.warn(`⚠️ [forgotPasswordController] Unverified email recovery request blocked: ${email}`);
             return res.status(400).json({ 
                 message: "This email address is not verified. Please verify your email in settings to enable password recovery." 
             });
@@ -394,7 +383,6 @@ async function forgotPasswordController(req, res) {
             resetToken = crypto.randomBytes(32).toString("hex");
             user.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
             user.resetPasswordExpire = Date.now() + 20 * 60 * 1000; // 20 minutes
-            console.log(`🔑 [forgotPasswordController] Generated password reset token for user: ${user.username}`);
             await user.save();
         } catch (tokenErr) {
             console.error(`❌ [forgotPasswordController] Token generation/save failure for ${user.username}:`, tokenErr.message);
@@ -404,7 +392,6 @@ async function forgotPasswordController(req, res) {
         const resetUrl = `${req.headers.origin}/reset-password/${resetToken}`;
 
         // Send password reset email asynchronously in the background (non-blocking)
-        console.log(`📨 [forgotPasswordController] Queuing password reset email for: ${user.email}`);
         const { sendGeneralEmail } = require("../services/emailService");
         
         const resetHtml = `
@@ -418,11 +405,8 @@ async function forgotPasswordController(req, res) {
         `;
         
         sendGeneralEmail(user.email, "Reset Your Password", resetHtml, `Click here to reset your password: ${resetUrl}`, "password_reset")
-            .then(() => {
-                console.log(`📩 [forgotPasswordController] Password reset email successfully queued for: ${user.email}`);
-            })
             .catch((err) => {
-                console.error(`❌ [forgotPasswordController] Failed to queue background password reset email for ${user.email}:`, err.message);
+                console.error(`❌ [forgotPasswordController] Failed to queue password reset email for ${user.email}:`, err.message);
             });
 
         InfrastructureLogger.auth("INFO", `Password recovery link requested for user "${user.username}" (${user.email})`, {

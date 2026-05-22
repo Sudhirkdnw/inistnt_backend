@@ -9,7 +9,8 @@ const {
     requestEmailVerification, verifyEmail,
     toggleFollow, getFollowers, getFollowing,
     searchUsers, getSuggestions,
-    requestSoftDelete, recoverAccount
+    requestSoftDelete, recoverAccount, hardDeleteAccount,
+    acceptFollowRequest, declineFollowRequest
 } = require("../controllers/user.controller");
 
 // Search & suggestions must come before /:id to avoid conflicts
@@ -19,6 +20,8 @@ router.get("/:id", authMiddleware, getUserProfile);
 router.put("/edit", authMiddleware, updateProfile);
 router.put("/avatar", authMiddleware, upload.single("avatar"), updateAvatar);
 router.post("/:id/follow", authMiddleware, toggleFollow);
+router.post("/:id/follow-request/accept", authMiddleware, acceptFollowRequest);
+router.post("/:id/follow-request/decline", authMiddleware, declineFollowRequest);
 router.get("/:id/followers", authMiddleware, getFollowers);
 router.get("/:id/following", authMiddleware, getFollowing);
 
@@ -28,6 +31,7 @@ router.post("/verify-email", authMiddleware, verifyEmail);
 
 // Soft Delete & Recovery
 router.post("/request-soft-delete", authMiddleware, requestSoftDelete);
+router.delete("/delete-account", authMiddleware, hardDeleteAccount);
 router.post("/recover-account", recoverAccount); // Public route for recovery flow
 
 module.exports = router;

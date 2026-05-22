@@ -2,6 +2,10 @@ const userModel = require("../models/user.model");
 const bcrypt = require("bcryptjs");
 const DatingProfile = require("../models/dating.model");
 const notificationModel = require("../models/notification.model");
+const Confession = require("../models/confession.model");
+const Comment = require("../models/comment.model");
+const Conversation = require("../models/conversation.model");
+const Message = require("../models/message.model");
 const { uploadAvatar } = require('../utils/cloudinary');
 const crypto = require("crypto");
 const { sendVerificationEmail } = require("../services/emailService");
@@ -22,10 +26,12 @@ async function getUserProfile(req, res) {
         const targetUserId = user._id.toString();
         const isOwner = currentUserId === targetUserId;
         const isFollowing = user.followers.some(f => f._id.toString() === currentUserId);
+        const isFollower = user.following.some(f => f._id.toString() === currentUserId);
+        const isMutualFollow = isFollowing && isFollower;
 
         let responseUser = user.toObject();
 
-        if (responseUser.isPrivate && !isOwner && !isFollowing) {
+        if (responseUser.isPrivate && !isOwner && !isMutualFollow) {
             // Scrub private data
             responseUser.followers = [];
             responseUser.following = [];
@@ -49,6 +55,10 @@ async function getUserProfile(req, res) {
                 responseUser.datingPhotos = [];
             }
         }
+
+        responseUser.isFollowingUser = isFollowing;
+        responseUser.isMutualFollow = isMutualFollow;
+        responseUser.isRequestedUser = user.followRequests && user.followRequests.some(f => f.toString() === currentUserId);
 
         res.status(200).json({ user: responseUser });
     } catch (error) {
@@ -237,26 +247,72 @@ async function toggleFollow(req, res) {
         }
 
         const isFollowing = targetUser.followers.includes(currentUserId);
+        const isRequested = targetUser.followRequests && targetUser.followRequests.includes(currentUserId);
 
         if (isFollowing) {
             // Unfollow
             await userModel.findByIdAndUpdate(targetUserId, { $pull: { followers: currentUserId } });
             await userModel.findByIdAndUpdate(currentUserId, { $pull: { following: targetUserId } });
-            res.status(200).json({ message: "Unfollowed successfully", isFollowing: false });
+            res.status(200).json({ message: "Unfollowed successfully", isFollowing: false, isRequested: false });
+        } else if (targetUser.isPrivate) {
+            if (isRequested) {
+                // Cancel request
+                await userModel.findByIdAndUpdate(targetUserId, { $pull: { followRequests: currentUserId } });
+                await userModel.findByIdAndUpdate(currentUserId, { $pull: { sentFollowRequests: targetUserId } });
+                res.status(200).json({ message: "Follow request cancelled", isFollowing: false, isRequested: false });
+            } else {
+                // Send request
+                await userModel.findByIdAndUpdate(targetUserId, { $addToSet: { followRequests: currentUserId } });
+                await userModel.findByIdAndUpdate(currentUserId, { $addToSet: { sentFollowRequests: targetUserId } });
+                
+                // Create follow request notification
+                const notif = await notificationModel.create({
+                    recipient: targetUserId,
+                    sender: currentUserId,
+                    type: "follow_request",
+                    message: `${req.user.username} requested to follow you`
+                });
+
+                // Emit real-time socket notification
+                const io = req.app.get("io");
+                if (io) {
+                    const onlineUsers = io._onlineUsers || new Map();
+                    const targetSocketId = onlineUsers.get(String(targetUserId));
+                    if (targetSocketId) {
+                        const populatedNotif = await notificationModel.findById(notif._id)
+                            .populate("sender", "username fullName avatar");
+                        io.to(targetSocketId).emit("new-notification", populatedNotif);
+                    }
+                }
+
+                res.status(200).json({ message: "Follow requested", isFollowing: false, isRequested: true });
+            }
         } else {
-            // Follow
+            // Follow public account
             await userModel.findByIdAndUpdate(targetUserId, { $addToSet: { followers: currentUserId } });
             await userModel.findByIdAndUpdate(currentUserId, { $addToSet: { following: targetUserId } });
 
             // Create notification
-            await notificationModel.create({
+            const notif = await notificationModel.create({
                 recipient: targetUserId,
                 sender: currentUserId,
                 type: "follow",
                 message: `${req.user.username} started following you`
             });
 
-            res.status(200).json({ message: "Followed successfully", isFollowing: true });
+            // Emit real-time socket notification to target user
+            const io = req.app.get("io");
+            if (io) {
+                const onlineUsers = io._onlineUsers || new Map();
+                const targetSocketId = onlineUsers.get(String(targetUserId));
+                if (targetSocketId) {
+                    const populatedNotif = await notificationModel.findById(notif._id)
+                        .populate("sender", "username fullName avatar");
+                    io.to(targetSocketId).emit("new-notification", populatedNotif);
+                }
+            }
+
+            res.status(200).json({ message: "Followed successfully", isFollowing: true, isRequested: false });
         }
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -592,6 +648,138 @@ async function recoverAccount(req, res) {
     }
 }
 
+// DELETE /api/users/delete-account
+async function hardDeleteAccount(req, res) {
+    try {
+        const { password } = req.body;
+        if (!password) return res.status(400).json({ message: "Password is required to delete account" });
+
+        const user = await userModel.findById(req.user._id);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) return res.status(401).json({ message: "Incorrect password" });
+
+        const userId = user._id;
+
+        // --- 1. Delete Messages and DMs ---
+        // Find all DM conversations where user is a participant
+        const dms = await Conversation.find({ type: "dm", participants: userId });
+        const dmIds = dms.map(c => c._id);
+        
+        // Delete all messages in those DMs
+        await Message.deleteMany({ conversation: { $in: dmIds } });
+        // Delete the DM conversations
+        await Conversation.deleteMany({ _id: { $in: dmIds } });
+
+        // For Groups: Remove user from participants
+        await Conversation.updateMany(
+            { type: "group", participants: userId },
+            { $pull: { participants: userId } }
+        );
+
+        // --- 2. Delete Content ---
+        await Confession.deleteMany({ user: userId });
+        await Comment.deleteMany({ user: userId });
+
+        // --- 3. Delete Notifications ---
+        await notificationModel.deleteMany({
+            $or: [{ sender: userId }, { recipient: userId }]
+        });
+
+        // --- 4. Delete Dating Data ---
+        await DatingProfile.deleteOne({ user: userId });
+        await DatingProfile.updateMany(
+            { $or: [{ likedUsers: userId }, { passedUsers: userId }, { matches: userId }] },
+            { 
+                $pull: { likedUsers: userId, passedUsers: userId, matches: userId } 
+            }
+        );
+
+        // --- 5. Remove from Social Graph ---
+        await userModel.updateMany(
+            { $or: [{ followers: userId }, { following: userId }] },
+            { 
+                $pull: { followers: userId, following: userId } 
+            }
+        );
+
+        // --- 6. Delete User Record ---
+        await user.deleteOne();
+
+        res.status(200).json({ message: "Account completely deleted successfully." });
+    } catch (error) {
+        console.error("Hard delete error:", error);
+        res.status(500).json({ message: error.message });
+    }
+}
+
+// POST /api/users/:id/follow-request/accept
+async function acceptFollowRequest(req, res) {
+    try {
+        const requesterId = req.params.id;
+        const currentUserId = req.user._id;
+
+        const currentUser = await userModel.findById(currentUserId);
+        if (!currentUser.followRequests.includes(requesterId)) {
+            return res.status(400).json({ message: "No pending follow request from this user" });
+        }
+
+        // Accept request: Add to followers, remove from requests
+        await userModel.findByIdAndUpdate(currentUserId, {
+            $pull: { followRequests: requesterId },
+            $addToSet: { followers: requesterId }
+        });
+        await userModel.findByIdAndUpdate(requesterId, {
+            $pull: { sentFollowRequests: currentUserId },
+            $addToSet: { following: currentUserId }
+        });
+
+        // Create notification
+        const notif = await notificationModel.create({
+            recipient: requesterId,
+            sender: currentUserId,
+            type: "follow",
+            message: `${req.user.username} accepted your follow request`
+        });
+
+        // Emit socket
+        const io = req.app.get("io");
+        if (io) {
+            const onlineUsers = io._onlineUsers || new Map();
+            const targetSocketId = onlineUsers.get(String(requesterId));
+            if (targetSocketId) {
+                const populatedNotif = await notificationModel.findById(notif._id)
+                    .populate("sender", "username fullName avatar");
+                io.to(targetSocketId).emit("new-notification", populatedNotif);
+            }
+        }
+
+        res.status(200).json({ message: "Follow request accepted" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
+
+// POST /api/users/:id/follow-request/decline
+async function declineFollowRequest(req, res) {
+    try {
+        const requesterId = req.params.id;
+        const currentUserId = req.user._id;
+
+        await userModel.findByIdAndUpdate(currentUserId, {
+            $pull: { followRequests: requesterId }
+        });
+        await userModel.findByIdAndUpdate(requesterId, {
+            $pull: { sentFollowRequests: currentUserId }
+        });
+
+        res.status(200).json({ message: "Follow request declined" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
+
 module.exports = {
     getUserProfile,
     updateProfile,
@@ -599,10 +787,13 @@ module.exports = {
     requestEmailVerification,
     verifyEmail,
     requestSoftDelete,
+    hardDeleteAccount,
     recoverAccount,
     toggleFollow,
     getFollowers,
     getFollowing,
     searchUsers,
-    getSuggestions
+    getSuggestions,
+    acceptFollowRequest,
+    declineFollowRequest
 };

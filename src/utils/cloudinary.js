@@ -57,7 +57,7 @@ const uploadImage = async (input, opts = {}, mimetype = null) => {
     }
 
     const defaults = {
-        folder: 'friendzone',
+        folder: 'inistnt',
         resource_type: 'auto',
         quality: 'auto:good',      // Auto compress
         fetch_format: 'auto',      // Serve WebP to supported browsers
@@ -99,7 +99,7 @@ const getThumbnail = (imageUrl, width = 150, height = 150) => {
  */
 const uploadAvatar = async (buffer, mimetype) => {
     return uploadImage(buffer, {
-        folder: 'friendzone/avatars',
+        folder: 'inistnt/avatars',
         transformation: [
             { width: 400, height: 400, crop: 'fill', gravity: 'face' },
         ],
@@ -111,7 +111,7 @@ const uploadAvatar = async (buffer, mimetype) => {
  */
 const uploadDatingPhoto = async (buffer, mimetype) => {
     return uploadImage(buffer, {
-        folder: 'friendzone/dating',
+        folder: 'inistnt/dating',
         transformation: [
             { width: 800, height: 1000, crop: 'fill', gravity: 'auto' },
         ],
@@ -127,7 +127,7 @@ const deleteImage = async (imageUrl) => {
         const parts = imageUrl.split('/');
         const filename = parts[parts.length - 1].split('.')[0];
         // For subfolders, we need the folder name too
-        const folderIndex = parts.indexOf('friendzone');
+        const folderIndex = parts.indexOf('inistnt') !== -1 ? parts.indexOf('inistnt') : parts.indexOf('friendzone');
         if (folderIndex !== -1) {
             const publicId = parts.slice(folderIndex).join('/').split('.')[0];
             await cloudinary.uploader.destroy(publicId);

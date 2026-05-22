@@ -114,8 +114,6 @@ io.on("connection", (socket) => {
         onlineUsers.set(uid, socket.id);
         socket.userId = uid;
         io.emit("online-users", Array.from(onlineUsers.keys()));
-        // console.log("Online users:", Array.from(onlineUsers.keys()));
-        console.log("Online users:")
     });
 
     socket.on("join-conversation", async (conversationId) => {
@@ -136,7 +134,6 @@ io.on("connection", (socket) => {
         } catch (e) {
             console.error("Error caching anonymous identities:", e);
         }
-        console.log(`Socket ${socket.id} joined conversation ${conversationId}`);
     });
 
     socket.on("leave-conversation", (conversationId) => {
@@ -162,7 +159,6 @@ io.on("connection", (socket) => {
     });
 
     socket.on("disconnect", () => {
-        console.log("User disconnected:", socket.id);
         if (socket.userId) {
             onlineUsers.delete(socket.userId);
             io.emit("online-users", Array.from(onlineUsers.keys()));
@@ -259,7 +255,7 @@ const startServer = async () => {
     }
 
     server.listen(PORT, () => {
-        InfrastructureLogger.server("SUCCESS", `FriendZone Enterprise Node Server is listening on port ${PORT} (Enterprise Cluster Mode)`);
+        InfrastructureLogger.server("SUCCESS", `Inistnt Enterprise Node Server is listening on port ${PORT} (Enterprise Cluster Mode)`);
     });
 };
 

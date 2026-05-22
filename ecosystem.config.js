@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'friendzone-api',
+      name: 'inistnt-api',
       script: 'server.js',
       instances: 'max', // Use all CPU cores
       exec_mode: 'cluster',

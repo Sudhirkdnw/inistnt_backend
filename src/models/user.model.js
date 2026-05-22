@@ -38,6 +38,14 @@ const userSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "user"
     }],
+    followRequests: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "user"
+    }],
+    sentFollowRequests: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "user"
+    }],
     isPrivate: {
         type: Boolean,
         default: false
