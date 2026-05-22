@@ -235,10 +235,10 @@ const startServer = async () => {
         InfrastructureLogger.server("ERROR", `Failed to initialize system cron jobs: ${err.message}`);
     }
     
-    // Initialize background email system queue and worker
+    // Initialize push-only email infrastructure
     try {
         await initEmailSystem();
-        InfrastructureLogger.email("SUCCESS", "Asynchronous email worker infrastructure initialized successfully.");
+        InfrastructureLogger.email("SUCCESS", `Asynchronous email push infrastructure initialized.`);
     } catch (err) {
         InfrastructureLogger.email("CRITICAL", `Asynchronous email worker infrastructure failed to initialize: ${err.message}`);
         process.exit(1);

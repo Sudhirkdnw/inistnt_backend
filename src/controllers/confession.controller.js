@@ -164,7 +164,8 @@ const getConfession = async (req, res) => {
     try {
         const confession = await confessionModel.findById(req.params.id)
             .populate("user", "username fullName avatar isPrivate followers")
-            .populate("likes", "username fullName avatar");
+            .populate("likes", "username fullName avatar")
+            .lean();
 
         if (!confession) {
             return res.status(404).json({ message: "Confession not found" });
@@ -381,7 +382,8 @@ const getComments = async (req, res) => {
         .populate("user", "username fullName avatar")
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(limit);
+        .limit(limit)
+        .lean();
 
         const total = await commentModel.countDocuments({
             confession: req.params.id,
@@ -390,7 +392,7 @@ const getComments = async (req, res) => {
 
         const confession = await confessionModel.findById(req.params.id);
 
-        let sanitizedComments = comments.map(c => c.toObject());
+        let sanitizedComments = comments;
         if (confession && confession.isAnonymous) {
             sanitizedComments = sanitizedComments.map(c => {
                 if (c.user && c.user._id.toString() === confession.user.toString()) {
@@ -422,13 +424,14 @@ const getReplies = async (req, res) => {
             .populate("user", "username fullName avatar")
             .sort({ createdAt: 1 })
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
             
         const total = await commentModel.countDocuments({ parentCommentId: req.params.commentId });
 
         // Need to check if the confession is anonymous to scrub author replies
         const parentComment = await commentModel.findById(req.params.commentId);
-        let sanitizedReplies = replies.map(r => r.toObject());
+        let sanitizedReplies = replies;
         
         if (parentComment) {
             const confession = await confessionModel.findById(parentComment.confession);
@@ -626,7 +629,8 @@ const getUserConfessions = async (req, res) => {
             .populate("user", "username fullName avatar")
             .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
 
         const total = await confessionModel.countDocuments(filter);
 

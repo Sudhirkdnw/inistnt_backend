@@ -60,7 +60,8 @@ async function setupProfile(req, res) {
 async function getMyProfile(req, res) {
     try {
         const profile = await DatingProfile.findOne({ user: req.user._id })
-            .populate("user", "username fullName avatar");
+            .populate("user", "username fullName avatar")
+            .lean();
         
         if (!profile) {
             return res.status(200).json({ 
@@ -269,14 +270,15 @@ async function getMatches(req, res) {
             .populate({
                 path: "matches",
                 select: "username fullName avatar collegeName verificationStatus"
-            });
+            })
+            .lean();
 
         if (!myProfile) return res.status(200).json({ matches: [] });
 
         // Get their dating profiles too (for interests)
         const matchDetails = await Promise.all(
             myProfile.matches.map(async (matchUser) => {
-                const dp = await DatingProfile.findOne({ user: matchUser._id });
+                const dp = await DatingProfile.findOne({ user: matchUser._id }).lean();
                 return {
                     user: matchUser,
                     interests: dp?.interests || [],

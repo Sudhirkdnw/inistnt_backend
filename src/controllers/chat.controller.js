@@ -257,10 +257,11 @@ async function getMessages(req, res) {
         let messages = await Message.find(filter)
             .populate("sender", "username avatar")
             .sort({ createdAt: -1 })
-            .limit(limit);
+            .limit(limit)
+            .lean();
             
         messages = messages.map(msg => {
-            const m = msg.toObject();
+            const m = msg;
             if (conversation.isAnonymousChat && m.sender._id.toString() !== currentUserId.toString()) {
                 const sId = m.sender._id.toString();
                 

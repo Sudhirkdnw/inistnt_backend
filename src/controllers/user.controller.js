@@ -16,7 +16,8 @@ async function getUserProfile(req, res) {
         const user = await userModel.findById(req.params.id)
             .select("-password")
             .populate("followers", "username fullName avatar")
-            .populate("following", "username fullName avatar");
+            .populate("following", "username fullName avatar")
+            .lean();
 
         if (!user) {
             return res.status(404).json({ message: "User not found" });
@@ -29,7 +30,7 @@ async function getUserProfile(req, res) {
         const isFollower = user.following.some(f => f._id.toString() === currentUserId);
         const isMutualFollow = isFollowing && isFollower;
 
-        let responseUser = user.toObject();
+        let responseUser = user;
 
         if (responseUser.isPrivate && !isOwner && !isMutualFollow) {
             // Scrub private data
@@ -588,11 +589,12 @@ async function getSuggestions(req, res) {
         })
             .select("username fullName avatar followers")
             .limit(10)
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
 
         // Add follower count for sorting
         const sorted = suggestions
-            .map(u => ({ ...u.toObject(), followersCount: u.followers.length }))
+            .map(u => ({ ...u, followersCount: u.followers.length }))
             .sort((a, b) => b.followersCount - a.followersCount);
 
         res.status(200).json({ users: sorted });

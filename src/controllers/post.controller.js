@@ -47,7 +47,8 @@ const getFeed = async (req, res) => {
             .populate("comments.user", "username fullName avatar")
             .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
 
         const total = await postModel.countDocuments({
             user: { $in: [...currentUser.following, currentUser._id] },
@@ -74,7 +75,8 @@ const getExplore = async (req, res) => {
             .populate("user", "username fullName avatar")
             .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
 
         const total = await postModel.countDocuments({ isHidden: false });
 
@@ -93,7 +95,8 @@ const getPost = async (req, res) => {
         const post = await postModel.findById(req.params.id)
             .populate("user", "username fullName avatar")
             .populate("comments.user", "username fullName avatar")
-            .populate("likes", "username fullName avatar");
+            .populate("likes", "username fullName avatar")
+            .lean();
 
         if (!post) {
             return res.status(404).json({ message: "Post not found" });
@@ -284,7 +287,8 @@ const getUserPosts = async (req, res) => {
             .populate("user", "username fullName avatar")
             .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
 
         const total = await postModel.countDocuments({
             user: req.params.userId,

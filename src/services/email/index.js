@@ -50,97 +50,22 @@ function isSpamRateLimited(emailAddress) {
 }
 
 /**
- * Initializes the entire enterprise email system and its background queue processor.
- * Performs critical production and development validation checks:
- * 1. Checks that RESEND_API_KEY and EMAIL_FROM are defined.
- * 2. Parses the sender domain.
- * 3. Blocks app startup if the sandbox domain (resend.dev) is detected in production.
- * 4. Verifies that custom sender domains are fully verified in the Resend account.
+ * Initializes the backend queue structure.
+ * Validates only what is necessary to push emails to the queue.
  */
 async function initEmailSystem() {
-    console.log("🚀 [Email System] Initializing Enterprise Infrastructure...");
-
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-        throw new Error("❌ [Email System] RESEND_API_KEY is not defined in the environment. Enterprise production email requires a valid Resend API key.");
-    }
+    console.log("🚀 [Email System] Initializing Push-Only Queue Interface...");
 
     const emailFrom = process.env.EMAIL_FROM;
     if (!emailFrom) {
-        throw new Error("❌ [Email System] EMAIL_FROM is not defined in the environment. Enterprise production email requires a valid sender address.");
+        throw new Error("❌ [Email System] EMAIL_FROM is not defined in the environment.");
     }
 
     // Validate EMAIL_FROM format
-    let cleanFrom;
     try {
-        cleanFrom = clientModule.sanitizeEmailAddress(emailFrom.includes("<") ? emailFrom.match(/<([^>]+)>/)[1] : emailFrom);
+        clientModule.sanitizeEmailAddress(emailFrom.includes("<") ? emailFrom.match(/<([^>]+)>/)[1] : emailFrom);
     } catch (err) {
         throw new Error(`❌ [Email System] Invalid email address format in EMAIL_FROM ("${emailFrom}"): ${err.message}`);
-    }
-
-    // Validate EMAIL_REPLY_TO if provided
-    if (process.env.EMAIL_REPLY_TO) {
-        try {
-            clientModule.sanitizeEmailAddress(process.env.EMAIL_REPLY_TO);
-        } catch (err) {
-            throw new Error(`❌ [Email System] Invalid email address format in EMAIL_REPLY_TO ("${process.env.EMAIL_REPLY_TO}"): ${err.message}`);
-        }
-    }
-
-    // Parse domain
-    const domain = cleanFrom.split("@")[1];
-    if (!domain) {
-        throw new Error(`❌ [Email System] Could not parse domain from EMAIL_FROM: "${emailFrom}"`);
-    }
-
-    const isSandboxSender = domain.toLowerCase() === "resend.dev";
-    const isProduction = process.env.NODE_ENV === "production";
-
-    if (isSandboxSender) {
-        if (isProduction) {
-            throw new Error("❌ [Email System] Sandbox sender address (resend.dev) detected in EMAIL_FROM. Production environment blocks app startup for sandbox senders.");
-        } else {
-            console.warn("⚠️ [Email System] Sandbox sender address (resend.dev) detected. Proceeding in non-production mode.");
-        }
-    }
-
-    // Retrieve Resend client
-    const resend = clientModule.getResendClient();
-
-    // Verify custom domain status in Resend
-    if (!isSandboxSender) {
-        try {
-            const response = await resend.domains.list();
-            if (response.error) {
-                const errMsg = response.error.message || JSON.stringify(response.error);
-                if (errMsg.includes("restricted to only send emails")) {
-                    console.log(`⚠️ [Email System] Resend API key is restricted to sending-only mode (recommended for production security).`);
-                    console.log(`⚠️ [Email System] Skipping programmatic domain list validation. Please ensure the domain "${domain.toLowerCase()}" is verified on your Resend dashboard.`);
-                } else {
-                    throw new Error(errMsg);
-                }
-            } else {
-                const domainsList = response.data || [];
-                const targetDomain = domain.toLowerCase();
-                const matchedDomain = domainsList.find(d => d.name.toLowerCase() === targetDomain);
-
-                if (!matchedDomain) {
-                    throw new Error(`Domain "${targetDomain}" is not configured in your Resend account.`);
-                }
-                if (matchedDomain.status !== "verified") {
-                    throw new Error(`Domain "${targetDomain}" is configured in Resend but is not verified (status: "${matchedDomain.status}").`);
-                }
-                console.log(`✅ [Email System] Verified custom domain "${targetDomain}" detected and validated.`);
-            }
-        } catch (err) {
-            const errMsg = err.message || "";
-            if (errMsg.includes("restricted to only send emails")) {
-                console.log(`⚠️ [Email System] Resend API key is restricted to sending-only mode (recommended for production security).`);
-                console.log(`⚠️ [Email System] Skipping programmatic domain list validation. Please ensure the domain "${domain.toLowerCase()}" is verified on your Resend dashboard.`);
-            } else {
-                throw new Error(`❌ [Email System] Domain verification failed: ${err.message}`);
-            }
-        }
     }
 
     emailQueue.start();

@@ -3,6 +3,7 @@ const router = express.Router();
 const { authMiddleware } = require("../middlewares/authmiddleware");
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
+const cacheMiddleware = require("../middlewares/cacheMiddleware");
 
 const {
     getUserProfile, updateProfile, updateAvatar,
@@ -14,9 +15,9 @@ const {
 } = require("../controllers/user.controller");
 
 // Search & suggestions must come before /:id to avoid conflicts
-router.get("/search", authMiddleware, searchUsers);
-router.get("/suggestions", authMiddleware, getSuggestions);
-router.get("/:id", authMiddleware, getUserProfile);
+router.get("/search", authMiddleware, cacheMiddleware(60), searchUsers);
+router.get("/suggestions", authMiddleware, cacheMiddleware(300), getSuggestions);
+router.get("/:id", authMiddleware, cacheMiddleware(60), getUserProfile);
 router.put("/edit", authMiddleware, updateProfile);
 router.put("/avatar", authMiddleware, upload.single("avatar"), updateAvatar);
 router.post("/:id/follow", authMiddleware, toggleFollow);
