@@ -44,6 +44,10 @@ const messageSchema = new mongoose.Schema(
 // ── Indexes ─────────────────────────────────────────────
 // Chat history: fetch messages for a conversation, newest first
 messageSchema.index({ conversation: 1, createdAt: -1 });
+// Fast cursor pagination support for chat history
+messageSchema.index({ conversation: 1, _id: -1 });
+// Unread message counting optimization
+messageSchema.index({ readBy: 1, conversation: 1 });
 // Sender lookup within a conversation
 messageSchema.index({ sender: 1, conversation: 1 });
 

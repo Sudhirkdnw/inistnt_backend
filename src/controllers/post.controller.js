@@ -33,31 +33,32 @@ const createPost = async (req, res) => {
 // GET /api/posts/feed — Posts from followed users
 const getFeed = async (req, res) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const skip = (page - 1) * limit;
+        const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+        const cursor = req.query.cursor;
 
         const currentUser = req.user;
 
-        const posts = await postModel.find({
+        const filter = {
             user: { $in: [...currentUser.following, currentUser._id] },
             isHidden: false
-        })
+        };
+
+        if (cursor) filter._id = { $lt: cursor };
+
+        const posts = await postModel.find(filter)
+            .select("caption image user likes comments tags location createdAt")
             .populate("user", "username fullName avatar")
             .populate("comments.user", "username fullName avatar")
-            .sort({ createdAt: -1 })
-            .skip(skip)
+            .sort({ _id: -1 })
             .limit(limit)
             .lean();
 
-        const total = await postModel.countDocuments({
-            user: { $in: [...currentUser.following, currentUser._id] },
-            isHidden: false
-        });
+        const nextCursor = posts.length === limit ? posts[posts.length - 1]._id : null;
 
         res.status(200).json({
             posts,
-            pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+            nextCursor,
+            hasMore: posts.length === limit
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -67,22 +68,25 @@ const getFeed = async (req, res) => {
 // GET /api/posts/explore — Trending / all posts
 const getExplore = async (req, res) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
-        const skip = (page - 1) * limit;
+        const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+        const cursor = req.query.cursor;
 
-        const posts = await postModel.find({ isHidden: false })
+        const filter = { isHidden: false };
+        if (cursor) filter._id = { $lt: cursor };
+
+        const posts = await postModel.find(filter)
+            .select("caption image user likes comments tags location createdAt")
             .populate("user", "username fullName avatar")
-            .sort({ createdAt: -1 })
-            .skip(skip)
+            .sort({ _id: -1 })
             .limit(limit)
             .lean();
 
-        const total = await postModel.countDocuments({ isHidden: false });
+        const nextCursor = posts.length === limit ? posts[posts.length - 1]._id : null;
 
         res.status(200).json({
             posts,
-            pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+            nextCursor,
+            hasMore: posts.length === limit
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -93,6 +97,7 @@ const getExplore = async (req, res) => {
 const getPost = async (req, res) => {
     try {
         const post = await postModel.findById(req.params.id)
+            .select("caption image user likes comments tags location createdAt")
             .populate("user", "username fullName avatar")
             .populate("comments.user", "username fullName avatar")
             .populate("likes", "username fullName avatar")
@@ -276,28 +281,29 @@ const deleteComment = async (req, res) => {
 // GET /api/posts/user/:userId — Get posts by user
 const getUserPosts = async (req, res) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 12;
-        const skip = (page - 1) * limit;
+        const limit = Math.min(parseInt(req.query.limit) || 12, 50);
+        const cursor = req.query.cursor;
 
-        const posts = await postModel.find({
+        const filter = {
             user: req.params.userId,
             isHidden: false
-        })
+        };
+
+        if (cursor) filter._id = { $lt: cursor };
+
+        const posts = await postModel.find(filter)
+            .select("caption image user likes comments tags location createdAt")
             .populate("user", "username fullName avatar")
-            .sort({ createdAt: -1 })
-            .skip(skip)
+            .sort({ _id: -1 })
             .limit(limit)
             .lean();
 
-        const total = await postModel.countDocuments({
-            user: req.params.userId,
-            isHidden: false
-        });
+        const nextCursor = posts.length === limit ? posts[posts.length - 1]._id : null;
 
         res.status(200).json({
             posts,
-            pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+            nextCursor,
+            hasMore: posts.length === limit
         });
     } catch (error) {
         res.status(500).json({ message: error.message });

@@ -49,8 +49,12 @@ const postSchema = new mongoose.Schema({
 // ── Indexes ─────────────────────────────────────────────
 // Profile page: user's posts newest first
 postSchema.index({ user: 1, createdAt: -1 });
+// Profile page: infinite scroll cursor optimization
+postSchema.index({ user: 1, isHidden: 1, _id: -1 });
 // Explore feed: visible posts newest first
 postSchema.index({ isHidden: 1, createdAt: -1 });
+// Explore feed: infinite scroll cursor optimization
+postSchema.index({ isHidden: 1, _id: -1 });
 // Tag search
 postSchema.index({ tags: 1 });
 

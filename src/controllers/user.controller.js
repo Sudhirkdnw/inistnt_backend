@@ -14,7 +14,7 @@ const { sendVerificationEmail } = require("../services/emailService");
 async function getUserProfile(req, res) {
     try {
         const user = await userModel.findById(req.params.id)
-            .select("-password")
+            .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt")
             .populate("followers", "username fullName avatar")
             .populate("following", "username fullName avatar")
             .lean();
@@ -71,7 +71,7 @@ async function getUserProfile(req, res) {
 async function updateProfile(req, res) {
     try {
         const { username, fullName, bio, avatar, isPrivate, email } = req.body;
-        const user = await userModel.findById(req.user._id);
+        const user = await userModel.findById(req.user._id).select("+password");
 
         if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -223,7 +223,7 @@ async function updateAvatar(req, res) {
             req.user._id,
             { avatar: avatarUrl },
             { returnDocument: 'after' }
-        ).select("-password");
+        ).select("username fullName bio avatar isPrivate isVerified");
 
         res.status(200).json({ message: "Avatar updated", user });
     } catch (error) {
@@ -723,8 +723,9 @@ async function acceptFollowRequest(req, res) {
         const currentUserId = req.user._id;
 
         const currentUser = await userModel.findById(currentUserId);
-        if (!currentUser.followRequests.includes(requesterId)) {
-            return res.status(400).json({ message: "No pending follow request from this user" });
+        if (!currentUser.followRequests.some(id => id.toString() === requesterId.toString())) {
+            // Return 200 even if not found, so the frontend removes the stale notification
+            return res.status(200).json({ message: "Follow request already handled or cancelled" });
         }
 
         // Accept request: Add to followers, remove from requests
@@ -768,6 +769,11 @@ async function declineFollowRequest(req, res) {
     try {
         const requesterId = req.params.id;
         const currentUserId = req.user._id;
+
+        const currentUser = await userModel.findById(currentUserId);
+        if (!currentUser.followRequests.some(id => id.toString() === requesterId.toString())) {
+            return res.status(200).json({ message: "Request already handled" });
+        }
 
         await userModel.findByIdAndUpdate(currentUserId, {
             $pull: { followRequests: requesterId }

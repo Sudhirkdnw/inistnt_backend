@@ -41,6 +41,8 @@ const notificationSchema = new mongoose.Schema({
 // ── Indexes ─────────────────────────────────────────────
 // Unread count query: recipient + isRead filter, newest first
 notificationSchema.index({ recipient: 1, isRead: 1, createdAt: -1 });
+// Cursor-based pagination support for notification panel
+notificationSchema.index({ recipient: 1, isRead: 1, _id: -1 });
 
 const notificationModel = mongoose.model("notification", notificationSchema);
 

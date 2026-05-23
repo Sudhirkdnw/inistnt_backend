@@ -38,6 +38,8 @@ const commentSchema = new mongoose.Schema({
 // ── Indexes ─────────────────────────────────────────────
 // For fetching top-level comments or replies to a specific comment efficiently
 commentSchema.index({ confession: 1, parentCommentId: 1, createdAt: -1 });
+// Cursor-based pagination support for comments
+commentSchema.index({ confession: 1, parentCommentId: 1, _id: -1 });
 
 const commentModel = mongoose.model("comment", commentSchema);
 

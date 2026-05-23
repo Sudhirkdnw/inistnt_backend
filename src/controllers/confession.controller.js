@@ -163,6 +163,7 @@ const getExplore = async (req, res) => {
 const getConfession = async (req, res) => {
     try {
         const confession = await confessionModel.findById(req.params.id)
+            .select("confessionText category user isAnonymous likes commentCount isHidden isLocked isPinned isNSFW createdAt")
             .populate("user", "username fullName avatar isPrivate followers")
             .populate("likes", "username fullName avatar")
             .lean();
@@ -371,24 +372,22 @@ const addComment = async (req, res) => {
 // GET /api/confessions/:id/comments
 const getComments = async (req, res) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const skip = (page - 1) * limit;
+        const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+        const cursor = req.query.cursor;
 
-        const comments = await commentModel.find({
+        const filter = {
             confession: req.params.id,
             parentCommentId: null
-        })
+        };
+
+        if (cursor) filter._id = { $lt: cursor };
+
+        const comments = await commentModel.find(filter)
+        .select("text user likes replyCount createdAt parentCommentId confession")
         .populate("user", "username fullName avatar")
-        .sort({ createdAt: -1 })
-        .skip(skip)
+        .sort({ _id: -1 })
         .limit(limit)
         .lean();
-
-        const total = await commentModel.countDocuments({
-            confession: req.params.id,
-            parentCommentId: null
-        });
 
         const confession = await confessionModel.findById(req.params.id);
 
@@ -404,9 +403,12 @@ const getComments = async (req, res) => {
             });
         }
 
+        const nextCursor = comments.length === limit ? comments[comments.length - 1]._id : null;
+
         res.status(200).json({
             comments: sanitizedComments,
-            pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+            nextCursor,
+            hasMore: comments.length === limit
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -416,19 +418,20 @@ const getComments = async (req, res) => {
 // GET /api/confessions/comment/:commentId/replies
 const getReplies = async (req, res) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const skip = (page - 1) * limit;
+        const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+        const cursor = req.query.cursor;
 
-        const replies = await commentModel.find({ parentCommentId: req.params.commentId })
+        const filter = { parentCommentId: req.params.commentId };
+        
+        if (cursor) filter._id = { $gt: cursor }; // Replies are sorted ascending so we use $gt for next page
+
+        const replies = await commentModel.find(filter)
+            .select("text user likes replyCount createdAt parentCommentId confession")
             .populate("user", "username fullName avatar")
-            .sort({ createdAt: 1 })
-            .skip(skip)
+            .sort({ _id: 1 })
             .limit(limit)
             .lean();
             
-        const total = await commentModel.countDocuments({ parentCommentId: req.params.commentId });
-
         // Need to check if the confession is anonymous to scrub author replies
         const parentComment = await commentModel.findById(req.params.commentId);
         let sanitizedReplies = replies;
@@ -447,9 +450,12 @@ const getReplies = async (req, res) => {
             }
         }
 
+        const nextCursor = replies.length === limit ? replies[replies.length - 1]._id : null;
+
         res.status(200).json({
             replies: sanitizedReplies,
-            pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+            nextCursor,
+            hasMore: replies.length === limit
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -594,9 +600,8 @@ const reportConfession = async (req, res) => {
 // GET /api/confessions/user/:userId — Get confessions by user (only non-anonymous or own)
 const getUserConfessions = async (req, res) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 12;
-        const skip = (page - 1) * limit;
+        const limit = Math.min(parseInt(req.query.limit) || 12, 50);
+        const cursor = req.query.cursor;
 
         const isOwnProfile = req.params.userId === req.user._id.toString();
 
@@ -611,7 +616,8 @@ const getUserConfessions = async (req, res) => {
         if (targetUser.isPrivate && !isOwnProfile && !isFollowing) {
             return res.status(200).json({
                 confessions: [],
-                pagination: { page: 1, limit, total: 0, pages: 0 }
+                nextCursor: null,
+                hasMore: false
             });
         }
 
@@ -625,18 +631,21 @@ const getUserConfessions = async (req, res) => {
             filter.isAnonymous = false;
         }
 
+        if (cursor) filter._id = { $lt: cursor };
+
         const confessions = await confessionModel.find(filter)
+            .select("confessionText category user isAnonymous likes commentCount isHidden isLocked isPinned isNSFW createdAt")
             .populate("user", "username fullName avatar")
-            .sort({ createdAt: -1 })
-            .skip(skip)
+            .sort({ _id: -1 })
             .limit(limit)
             .lean();
 
-        const total = await confessionModel.countDocuments(filter);
+        const nextCursor = confessions.length === limit ? confessions[confessions.length - 1]._id : null;
 
         res.status(200).json({
             confessions,
-            pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+            nextCursor,
+            hasMore: confessions.length === limit
         });
     } catch (error) {
         res.status(500).json({ message: error.message });

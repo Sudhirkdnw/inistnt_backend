@@ -41,4 +41,8 @@ const conversationSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+// ── Indexes ─────────────────────────────────────────────
+// Faster Inbox queries: Fetching conversations for a user, sorted by newest update
+conversationSchema.index({ participants: 1, updatedAt: -1 });
+
 module.exports = mongoose.model("Conversation", conversationSchema);
