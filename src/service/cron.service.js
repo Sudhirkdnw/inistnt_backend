@@ -40,6 +40,10 @@ const initCronJobs = () => {
             console.error('❌ Error during permanent deletion cleanup:', error);
         }
     });
+
+    // Initialize the auto-delete cleanup job for messages and confessions
+    const { initCleanupCron } = require('../jobs/cleanup.job');
+    initCleanupCron();
 };
 
 module.exports = { initCronJobs };

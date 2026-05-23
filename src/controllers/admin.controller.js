@@ -729,7 +729,7 @@ const getEmailTemplates = async (req, res) => {
         if (templates.length === 0) {
             const defaults = [
                 { name: 'otp_verification', subject: 'Your Verification Code', content: '<h1>Welcome!</h1><p>Your OTP is: <strong>{{otp}}</strong></p>', variables: ['otp', 'username'] },
-                { name: 'password_reset', subject: 'Reset Your Password', content: '<h1>Security Alert</h1><p>Click <a href="{{url}}">here</a> to reset.</p>', variables: ['url', 'username'] }
+                { name: 'password_reset', subject: 'Reset Your Password', content: '<h1>Security Alert</h1><p>Click <a href="{{url}}" clicktracking="off">here</a> to reset.</p><p>Or copy and paste this link: {{url}}</p>', variables: ['url', 'username'] }
             ];
             await EmailTemplate.insertMany(defaults);
             return res.status(200).json({ templates: await EmailTemplate.find().sort({ name: 1 }) });

@@ -50,5 +50,7 @@ messageSchema.index({ conversation: 1, _id: -1 });
 messageSchema.index({ readBy: 1, conversation: 1 });
 // Sender lookup within a conversation
 messageSchema.index({ sender: 1, conversation: 1 });
+// Cleanup job optimization
+messageSchema.index({ createdAt: 1 });
 
 module.exports = mongoose.model("Message", messageSchema);
