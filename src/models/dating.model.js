@@ -71,6 +71,7 @@ datingProfileSchema.index({ matches: 1 });
 datingProfileSchema.index({ likedUsers: 1 });
 
 datingProfileSchema.index({ interests: 1 });
+datingProfileSchema.index({ createdAt: -1 }); // Added for analytics
 
 const DatingProfile = mongoose.model("DatingProfile", datingProfileSchema);
 module.exports = DatingProfile;

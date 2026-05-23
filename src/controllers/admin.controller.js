@@ -34,18 +34,18 @@ const getDashboard = async (req, res) => {
             totalDatingProfiles, totalMatches,
             totalComments, totalMessages
         ] = await Promise.all([
-            userModel.countDocuments(),
+            userModel.estimatedDocumentCount(),
             userModel.countDocuments({ lastActive: { $gte: last24h } }),
             userModel.countDocuments({ lastActive: { $gte: new Date(now - 5 * 60 * 1000) } }), // Active in last 5 mins
-            confessionModel.countDocuments(),
+            confessionModel.estimatedDocumentCount(),
             confessionModel.countDocuments({ createdAt: { $gte: last24h } }),
-            reportModel.countDocuments(),
+            reportModel.estimatedDocumentCount(),
             reportModel.countDocuments({ status: "pending" }),
-            require("../models/dating.model").countDocuments(),
+            require("../models/dating.model").estimatedDocumentCount(),
             // Assuming there's a match model or counting based on dating profile
             0, // Placeholder for matches
-            require("../models/comment.model").countDocuments(),
-            require("../models/message.model").countDocuments()
+            require("../models/comment.model").estimatedDocumentCount(),
+            require("../models/message.model").estimatedDocumentCount()
         ]);
 
         const recentUsers = await userModel.find().sort({ createdAt: -1 }).limit(8).select("username fullName avatar createdAt verificationStatus");

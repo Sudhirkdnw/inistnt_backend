@@ -44,6 +44,7 @@ const reportSchema = new mongoose.Schema({
 
 // Index for performance
 reportSchema.index({ status: 1, createdAt: -1 });
+reportSchema.index({ createdAt: -1 }); // Added for analytics
 
 const reportModel = mongoose.model("report", reportSchema);
 

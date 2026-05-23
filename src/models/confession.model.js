@@ -69,6 +69,7 @@ confessionSchema.index({ user: 1, isHidden: 1, _id: -1 });
 confessionSchema.index({ confessionText: 'text' });
 confessionSchema.index({ isNSFW: 1, isHidden: 1 });
 confessionSchema.index({ reports: 1 }, { sparse: true });
+confessionSchema.index({ createdAt: -1 }); // Added for analytics
 
 const confessionModel = mongoose.model("confession", confessionSchema);
 

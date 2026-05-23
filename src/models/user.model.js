@@ -199,6 +199,8 @@ userSchema.index({ username: 'text', fullName: 'text' });
 // Compound Admin Queries
 userSchema.index({ role: 1, createdAt: -1 });
 userSchema.index({ collegeName: 1, verificationStatus: 1 });
+userSchema.index({ createdAt: -1 }); // Added for analytics
+userSchema.index({ verificationStatus: 1 }); // Added for dashboard queries
 
 const userModel = mongoose.model("user", userSchema);
 

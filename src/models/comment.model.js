@@ -40,6 +40,7 @@ const commentSchema = new mongoose.Schema({
 commentSchema.index({ confession: 1, parentCommentId: 1, createdAt: -1 });
 // Cursor-based pagination support for comments
 commentSchema.index({ confession: 1, parentCommentId: 1, _id: -1 });
+commentSchema.index({ createdAt: -1 }); // Added for analytics
 
 const commentModel = mongoose.model("comment", commentSchema);
 
