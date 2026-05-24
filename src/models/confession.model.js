@@ -25,6 +25,10 @@ const confessionSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    collegeName: {
+        type: String,
+        default: ""
+    },
     likes: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: "user"
@@ -57,6 +61,7 @@ const confessionSchema = new mongoose.Schema({
 
 // ── Indexes ─────────────────────────────────────────────
 // Core Feed Performance
+confessionSchema.index({ collegeName: 1, isHidden: 1, _id: -1 });
 confessionSchema.index({ isHidden: 1, createdAt: -1 });
 confessionSchema.index({ category: 1, isHidden: 1, createdAt: -1 });
 confessionSchema.index({ user: 1, createdAt: -1 });

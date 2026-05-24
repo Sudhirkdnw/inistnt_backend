@@ -37,7 +37,7 @@ const infrastructureLogSchema = new mongoose.Schema(
         },
         userId: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
+            ref: "user",
             index: true
         },
         requestId: {

@@ -16,7 +16,8 @@ const {
     getEmailLogs, getEmailTemplates, updateEmailTemplate, sendTestEmail,
     getMailConfig, updateMailConfig,
     exportUsers, bulkDeleteUsers, bulkDeleteConfessions, bulkConfessionsModeration,
-    exportReports, bulkReportsModeration, bulkHandleVerifications
+    exportReports, bulkReportsModeration, bulkHandleVerifications,
+    getColleges, addCollege, updateCollege, deleteCollege, bulkUploadColleges
 } = require("../controllers/admin.controller");
 
 // All admin routes require auth + admin role
@@ -57,6 +58,12 @@ router.get("/audit-logs", getAuditLogs);
 const multer = require("multer");
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
+
+router.get("/colleges", getColleges);
+router.post("/colleges", addCollege);
+router.post("/colleges/bulk", upload.single("file"), bulkUploadColleges);
+router.put("/colleges/:id", updateCollege);
+router.delete("/colleges/:id", deleteCollege);
 
 router.get("/settings", getSettings);
 router.put("/settings/:key", updateSetting);

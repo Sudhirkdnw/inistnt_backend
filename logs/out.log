@@ -124,3 +124,304 @@
 2026-05-16 13:10 +05:30: ✅ System settings loaded into memory cache
 2026-05-16 13:10 +05:30: ✅ Socket.IO using Redis adapter (cluster-ready)
 2026-05-16 13:10 +05:30: Server is running on port 3000 (Enterprise Mode)
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (3) from .env.production -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (3) from .env.production -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (3) from .env.production -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (3) from .env.production -- tip: 🛡️ auth for agents: https://vestauth.com
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (3) from .env.production -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (3) from .env.production -- tip: 🛡️ auth for agents: https://vestauth.com
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (3) from .env.production -- tip: ⚙️  enable debug logging with { debug: true }
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (3) from .env.production -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (3) from .env.production -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (3) from .env.production -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (3) from .env.production -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (3) from .env.production -- tip: ⚙️  write to custom object with { processEnv: myObject }
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (9) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (9) from .env -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (9) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (9) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (9) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (9) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (9) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (9) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (9) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (9) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (9) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+2026-05-23 20:47 +05:30: [dotenv@17.3.1] injecting env (9) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+2026-05-23 20:47 +05:30: ✅ Redis connected (cache)
+2026-05-23 20:47 +05:30: ✅ Redis connected (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis connected (cache)
+2026-05-23 20:47 +05:30: ✅ Redis connected (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis connected (cache)
+2026-05-23 20:47 +05:30: ✅ Redis connected (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis connected (cache)
+2026-05-23 20:47 +05:30: ✅ Redis connected (cache)
+2026-05-23 20:47 +05:30: ✅ Redis connected (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis connected (cache)
+2026-05-23 20:47 +05:30: ✅ Redis ready (cache)
+2026-05-23 20:47 +05:30: ✅ Redis ready (cache)
+2026-05-23 20:47 +05:30: ✅ Redis ready (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis ready (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis ready (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis ready (cache)
+2026-05-23 20:47 +05:30: ✅ Redis ready (cache)
+2026-05-23 20:47 +05:30: ✅ Redis ready (cache)
+2026-05-23 20:47 +05:30: ✅ Redis ready (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis ready (cache)
+2026-05-23 20:47 +05:30: ✅ Redis connected (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis connected (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis connected (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis connected (cache)
+2026-05-23 20:47 +05:30: ✅ Redis connected (cache)
+2026-05-23 20:47 +05:30: ✅ Redis connected (cache)
+2026-05-23 20:47 +05:30: ✅ Redis connected (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis connected (cache)
+2026-05-23 20:47 +05:30: ✅ Redis connected (pubsub)
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:32.503Z] 🗄️ [DATABASE][SUCCESS] (database-client) MongoDB Atlas Connected successfully[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:32.547Z] 🗄️ [DATABASE][SUCCESS] (database-client) MongoDB Atlas Connected successfully[0m
+2026-05-23 20:47 +05:30: ✅ Redis ready (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis ready (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis ready (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis ready (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis ready (cache)
+2026-05-23 20:47 +05:30: ✅ Redis ready (cache)
+2026-05-23 20:47 +05:30: ✅ Redis ready (cache)
+2026-05-23 20:47 +05:30: ✅ Redis ready (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis ready (cache)
+2026-05-23 20:47 +05:30: ✅ System configuration synchronized with defaults
+2026-05-23 20:47 +05:30: ✅ System configuration synchronized with defaults
+2026-05-23 20:47 +05:30: ✅ System settings loaded into memory cache
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:33.196Z] 🚀 [SERVER][SUCCESS] (api-server) System settings successfully synchronized and loaded into memory.[0m
+2026-05-23 20:47 +05:30: 🕒 [Cron] Cleanup job scheduled to run every hour.
+2026-05-23 20:47 +05:30: [36m[2026-05-23T15:17:33.244Z] 🚀 [SERVER][INFO] (api-server) System cron jobs initialized successfully.[0m
+2026-05-23 20:47 +05:30: 🚀 [Email System] Initializing Push-Only Queue Interface...
+2026-05-23 20:47 +05:30: ⚙️ [Email Queue] Push-only mode initialized.
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:33.244Z] ✉️ [EMAIL][SUCCESS] (email-service) Asynchronous email push infrastructure initialized.[0m
+2026-05-23 20:47 +05:30: ✅ System settings loaded into memory cache
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:33.255Z] 🚀 [SERVER][SUCCESS] (api-server) System settings successfully synchronized and loaded into memory.[0m
+2026-05-23 20:47 +05:30: 🕒 [Cron] Cleanup job scheduled to run every hour.
+2026-05-23 20:47 +05:30: [36m[2026-05-23T15:17:33.276Z] 🚀 [SERVER][INFO] (api-server) System cron jobs initialized successfully.[0m
+2026-05-23 20:47 +05:30: 🚀 [Email System] Initializing Push-Only Queue Interface...
+2026-05-23 20:47 +05:30: ⚙️ [Email Queue] Push-only mode initialized.
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:33.276Z] ✉️ [EMAIL][SUCCESS] (email-service) Asynchronous email push infrastructure initialized.[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:33.277Z] 🧠 [REDIS][SUCCESS] (redis-client) Socket.IO using Redis adapter (cluster-ready).[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:33.281Z] 🚀 [SERVER][SUCCESS] (api-server) Inistnt Enterprise Node Server is listening on port 3000 (Enterprise Cluster Mode)[0m
+2026-05-23 20:47 +05:30: ✅ Redis connected (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis connected (pubsub)
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:33.593Z] 🗄️ [DATABASE][SUCCESS] (database-client) MongoDB Atlas Connected successfully[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:33.600Z] 🗄️ [DATABASE][SUCCESS] (database-client) MongoDB Atlas Connected successfully[0m
+2026-05-23 20:47 +05:30: ✅ Redis ready (pubsub)
+2026-05-23 20:47 +05:30: ✅ Redis ready (pubsub)
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:34.247Z] 🧠 [REDIS][SUCCESS] (redis-client) Socket.IO using Redis adapter (cluster-ready).[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:34.250Z] 🚀 [SERVER][SUCCESS] (api-server) Inistnt Enterprise Node Server is listening on port 3000 (Enterprise Cluster Mode)[0m
+2026-05-23 20:47 +05:30: ✅ Redis connected (pubsub)
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:34.561Z] 🗄️ [DATABASE][SUCCESS] (database-client) MongoDB Atlas Connected successfully[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:34.575Z] 🗄️ [DATABASE][SUCCESS] (database-client) MongoDB Atlas Connected successfully[0m
+2026-05-23 20:47 +05:30: ✅ System configuration synchronized with defaults
+2026-05-23 20:47 +05:30: ✅ Redis ready (pubsub)
+2026-05-23 20:47 +05:30: ✅ System configuration synchronized with defaults
+2026-05-23 20:47 +05:30: ✅ System settings loaded into memory cache
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:35.473Z] 🚀 [SERVER][SUCCESS] (api-server) System settings successfully synchronized and loaded into memory.[0m
+2026-05-23 20:47 +05:30: 🕒 [Cron] Cleanup job scheduled to run every hour.
+2026-05-23 20:47 +05:30: [36m[2026-05-23T15:17:35.495Z] 🚀 [SERVER][INFO] (api-server) System cron jobs initialized successfully.[0m
+2026-05-23 20:47 +05:30: 🚀 [Email System] Initializing Push-Only Queue Interface...
+2026-05-23 20:47 +05:30: ⚙️ [Email Queue] Push-only mode initialized.
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:35.495Z] ✉️ [EMAIL][SUCCESS] (email-service) Asynchronous email push infrastructure initialized.[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:35.496Z] 🧠 [REDIS][SUCCESS] (redis-client) Socket.IO using Redis adapter (cluster-ready).[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:35.501Z] 🚀 [SERVER][SUCCESS] (api-server) Inistnt Enterprise Node Server is listening on port 3000 (Enterprise Cluster Mode)[0m
+2026-05-23 20:47 +05:30: ✅ System settings loaded into memory cache
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:35.538Z] 🚀 [SERVER][SUCCESS] (api-server) System settings successfully synchronized and loaded into memory.[0m
+2026-05-23 20:47 +05:30: 🕒 [Cron] Cleanup job scheduled to run every hour.
+2026-05-23 20:47 +05:30: [36m[2026-05-23T15:17:35.558Z] 🚀 [SERVER][INFO] (api-server) System cron jobs initialized successfully.[0m
+2026-05-23 20:47 +05:30: 🚀 [Email System] Initializing Push-Only Queue Interface...
+2026-05-23 20:47 +05:30: ⚙️ [Email Queue] Push-only mode initialized.
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:35.558Z] ✉️ [EMAIL][SUCCESS] (email-service) Asynchronous email push infrastructure initialized.[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:35.559Z] 🧠 [REDIS][SUCCESS] (redis-client) Socket.IO using Redis adapter (cluster-ready).[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:35.565Z] 🚀 [SERVER][SUCCESS] (api-server) Inistnt Enterprise Node Server is listening on port 3000 (Enterprise Cluster Mode)[0m
+2026-05-23 20:47 +05:30: ✅ System configuration synchronized with defaults
+2026-05-23 20:47 +05:30: ✅ System configuration synchronized with defaults
+2026-05-23 20:47 +05:30: ✅ Redis connected (cache)
+2026-05-23 20:47 +05:30: ✅ System settings loaded into memory cache
+2026-05-23 20:47 +05:30: ✅ System settings loaded into memory cache
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:36.670Z] 🚀 [SERVER][SUCCESS] (api-server) System settings successfully synchronized and loaded into memory.[0m
+2026-05-23 20:47 +05:30: 🕒 [Cron] Cleanup job scheduled to run every hour.
+2026-05-23 20:47 +05:30: [36m[2026-05-23T15:17:36.692Z] 🚀 [SERVER][INFO] (api-server) System cron jobs initialized successfully.[0m
+2026-05-23 20:47 +05:30: 🚀 [Email System] Initializing Push-Only Queue Interface...
+2026-05-23 20:47 +05:30: ⚙️ [Email Queue] Push-only mode initialized.
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:36.693Z] ✉️ [EMAIL][SUCCESS] (email-service) Asynchronous email push infrastructure initialized.[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:36.693Z] 🧠 [REDIS][SUCCESS] (redis-client) Socket.IO using Redis adapter (cluster-ready).[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:36.670Z] 🚀 [SERVER][SUCCESS] (api-server) System settings successfully synchronized and loaded into memory.[0m
+2026-05-23 20:47 +05:30: 🕒 [Cron] Cleanup job scheduled to run every hour.
+2026-05-23 20:47 +05:30: [36m[2026-05-23T15:17:36.692Z] 🚀 [SERVER][INFO] (api-server) System cron jobs initialized successfully.[0m
+2026-05-23 20:47 +05:30: 🚀 [Email System] Initializing Push-Only Queue Interface...
+2026-05-23 20:47 +05:30: ⚙️ [Email Queue] Push-only mode initialized.
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:36.693Z] ✉️ [EMAIL][SUCCESS] (email-service) Asynchronous email push infrastructure initialized.[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:36.693Z] 🧠 [REDIS][SUCCESS] (redis-client) Socket.IO using Redis adapter (cluster-ready).[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:36.698Z] 🚀 [SERVER][SUCCESS] (api-server) Inistnt Enterprise Node Server is listening on port 3000 (Enterprise Cluster Mode)[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:36.698Z] 🚀 [SERVER][SUCCESS] (api-server) Inistnt Enterprise Node Server is listening on port 3000 (Enterprise Cluster Mode)[0m
+2026-05-23 20:47 +05:30: ✅ Redis ready (cache)
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:37.329Z] 🗄️ [DATABASE][SUCCESS] (database-client) MongoDB Atlas Connected successfully[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:37.392Z] 🗄️ [DATABASE][SUCCESS] (database-client) MongoDB Atlas Connected successfully[0m
+2026-05-23 20:47 +05:30: ✅ Redis connected (cache)
+2026-05-23 20:47 +05:30: ✅ System configuration synchronized with defaults
+2026-05-23 20:47 +05:30: ✅ Redis ready (cache)
+2026-05-23 20:47 +05:30: ✅ System settings loaded into memory cache
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:39.409Z] 🚀 [SERVER][SUCCESS] (api-server) System settings successfully synchronized and loaded into memory.[0m
+2026-05-23 20:47 +05:30: 🕒 [Cron] Cleanup job scheduled to run every hour.
+2026-05-23 20:47 +05:30: [36m[2026-05-23T15:17:39.429Z] 🚀 [SERVER][INFO] (api-server) System cron jobs initialized successfully.[0m
+2026-05-23 20:47 +05:30: 🚀 [Email System] Initializing Push-Only Queue Interface...
+2026-05-23 20:47 +05:30: ⚙️ [Email Queue] Push-only mode initialized.
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:39.429Z] ✉️ [EMAIL][SUCCESS] (email-service) Asynchronous email push infrastructure initialized.[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:39.430Z] 🧠 [REDIS][SUCCESS] (redis-client) Socket.IO using Redis adapter (cluster-ready).[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:39.436Z] 🚀 [SERVER][SUCCESS] (api-server) Inistnt Enterprise Node Server is listening on port 3000 (Enterprise Cluster Mode)[0m
+2026-05-23 20:47 +05:30: ✅ System configuration synchronized with defaults
+2026-05-23 20:47 +05:30: ✅ System settings loaded into memory cache
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:39.564Z] 🚀 [SERVER][SUCCESS] (api-server) System settings successfully synchronized and loaded into memory.[0m
+2026-05-23 20:47 +05:30: 🕒 [Cron] Cleanup job scheduled to run every hour.
+2026-05-23 20:47 +05:30: [36m[2026-05-23T15:17:39.584Z] 🚀 [SERVER][INFO] (api-server) System cron jobs initialized successfully.[0m
+2026-05-23 20:47 +05:30: 🚀 [Email System] Initializing Push-Only Queue Interface...
+2026-05-23 20:47 +05:30: ⚙️ [Email Queue] Push-only mode initialized.
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:39.584Z] ✉️ [EMAIL][SUCCESS] (email-service) Asynchronous email push infrastructure initialized.[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:39.585Z] 🧠 [REDIS][SUCCESS] (redis-client) Socket.IO using Redis adapter (cluster-ready).[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:39.591Z] 🚀 [SERVER][SUCCESS] (api-server) Inistnt Enterprise Node Server is listening on port 3000 (Enterprise Cluster Mode)[0m
+2026-05-23 20:47 +05:30: [33m[2026-05-23T15:17:41.060Z] 🗄️ [DATABASE][WARNING] (database-client) Retrying MongoDB connection in 5 seconds...[0m
+2026-05-23 20:47 +05:30: [33m[2026-05-23T15:17:41.060Z] 🗄️ [DATABASE][WARNING] (database-client) Retrying MongoDB connection in 5 seconds...[0m
+2026-05-23 20:47 +05:30: [33m[2026-05-23T15:17:41.063Z] 🗄️ [DATABASE][WARNING] (database-client) Retrying MongoDB connection in 5 seconds...[0m
+2026-05-23 20:47 +05:30: [33m[2026-05-23T15:17:41.069Z] 🗄️ [DATABASE][WARNING] (database-client) Retrying MongoDB connection in 5 seconds...[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:46.350Z] 🗄️ [DATABASE][SUCCESS] (database-client) MongoDB Atlas Connected successfully[0m
+2026-05-23 20:47 +05:30: ✅ System settings loaded into memory cache
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:46.805Z] 🚀 [SERVER][SUCCESS] (api-server) System settings successfully synchronized and loaded into memory.[0m
+2026-05-23 20:47 +05:30: 🕒 [Cron] Cleanup job scheduled to run every hour.
+2026-05-23 20:47 +05:30: [36m[2026-05-23T15:17:46.824Z] 🚀 [SERVER][INFO] (api-server) System cron jobs initialized successfully.[0m
+2026-05-23 20:47 +05:30: 🚀 [Email System] Initializing Push-Only Queue Interface...
+2026-05-23 20:47 +05:30: ⚙️ [Email Queue] Push-only mode initialized.
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:46.825Z] ✉️ [EMAIL][SUCCESS] (email-service) Asynchronous email push infrastructure initialized.[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:46.826Z] 🧠 [REDIS][SUCCESS] (redis-client) Socket.IO using Redis adapter (cluster-ready).[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:46.830Z] 🚀 [SERVER][SUCCESS] (api-server) Inistnt Enterprise Node Server is listening on port 3000 (Enterprise Cluster Mode)[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:47.342Z] 🗄️ [DATABASE][SUCCESS] (database-client) MongoDB Atlas Connected successfully[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:47.357Z] 🗄️ [DATABASE][SUCCESS] (database-client) MongoDB Atlas Connected successfully[0m
+2026-05-23 20:47 +05:30: ✅ System settings loaded into memory cache
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:47.826Z] 🚀 [SERVER][SUCCESS] (api-server) System settings successfully synchronized and loaded into memory.[0m
+2026-05-23 20:47 +05:30: 🕒 [Cron] Cleanup job scheduled to run every hour.
+2026-05-23 20:47 +05:30: [36m[2026-05-23T15:17:47.845Z] 🚀 [SERVER][INFO] (api-server) System cron jobs initialized successfully.[0m
+2026-05-23 20:47 +05:30: 🚀 [Email System] Initializing Push-Only Queue Interface...
+2026-05-23 20:47 +05:30: ⚙️ [Email Queue] Push-only mode initialized.
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:47.845Z] ✉️ [EMAIL][SUCCESS] (email-service) Asynchronous email push infrastructure initialized.[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:47.846Z] 🧠 [REDIS][SUCCESS] (redis-client) Socket.IO using Redis adapter (cluster-ready).[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:47.850Z] 🚀 [SERVER][SUCCESS] (api-server) Inistnt Enterprise Node Server is listening on port 3000 (Enterprise Cluster Mode)[0m
+2026-05-23 20:47 +05:30: ✅ System settings loaded into memory cache
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:47.868Z] 🚀 [SERVER][SUCCESS] (api-server) System settings successfully synchronized and loaded into memory.[0m
+2026-05-23 20:47 +05:30: 🕒 [Cron] Cleanup job scheduled to run every hour.
+2026-05-23 20:47 +05:30: [36m[2026-05-23T15:17:47.888Z] 🚀 [SERVER][INFO] (api-server) System cron jobs initialized successfully.[0m
+2026-05-23 20:47 +05:30: 🚀 [Email System] Initializing Push-Only Queue Interface...
+2026-05-23 20:47 +05:30: ⚙️ [Email Queue] Push-only mode initialized.
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:47.888Z] ✉️ [EMAIL][SUCCESS] (email-service) Asynchronous email push infrastructure initialized.[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:47.889Z] 🧠 [REDIS][SUCCESS] (redis-client) Socket.IO using Redis adapter (cluster-ready).[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:47.893Z] 🚀 [SERVER][SUCCESS] (api-server) Inistnt Enterprise Node Server is listening on port 3000 (Enterprise Cluster Mode)[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:48.822Z] 🗄️ [DATABASE][SUCCESS] (database-client) MongoDB Atlas Connected successfully[0m
+2026-05-23 20:47 +05:30: ✅ System settings loaded into memory cache
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:49.786Z] 🚀 [SERVER][SUCCESS] (api-server) System settings successfully synchronized and loaded into memory.[0m
+2026-05-23 20:47 +05:30: 🕒 [Cron] Cleanup job scheduled to run every hour.
+2026-05-23 20:47 +05:30: [36m[2026-05-23T15:17:49.805Z] 🚀 [SERVER][INFO] (api-server) System cron jobs initialized successfully.[0m
+2026-05-23 20:47 +05:30: 🚀 [Email System] Initializing Push-Only Queue Interface...
+2026-05-23 20:47 +05:30: ⚙️ [Email Queue] Push-only mode initialized.
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:49.806Z] ✉️ [EMAIL][SUCCESS] (email-service) Asynchronous email push infrastructure initialized.[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:49.806Z] 🧠 [REDIS][SUCCESS] (redis-client) Socket.IO using Redis adapter (cluster-ready).[0m
+2026-05-23 20:47 +05:30: [32m[2026-05-23T15:17:49.810Z] 🚀 [SERVER][SUCCESS] (api-server) Inistnt Enterprise Node Server is listening on port 3000 (Enterprise Cluster Mode)[0m
+2026-05-23 21:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 21:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 21:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 21:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 21:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 21:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 21:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 21:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 21:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 21:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 21:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 21:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 21:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 21:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 21:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 21:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 21:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 21:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 21:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 21:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 21:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 21:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 21:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 21:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 21:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 21:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 21:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 21:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 21:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 21:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 21:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 21:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 21:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 21:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 21:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 21:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 21:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 21:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 21:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 21:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 21:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 21:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 21:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 21:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 21:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 21:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 21:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 21:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 21:03 +05:30: [32m[2026-05-23T15:33:00.894Z] 🔐 [AUTH][SUCCESS] (auth-controller) User login successful: "sudhir" (Role: user)[0m
+2026-05-23 22:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 22:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 22:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 22:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 22:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 22:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 22:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 22:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 22:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 22:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 22:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 22:00 +05:30: 🧹 [Cleanup Job] Starting database cleanup...
+2026-05-23 22:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 22:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 22:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 22:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 22:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 22:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 22:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 22:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 22:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 22:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 22:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 22:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 22:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 22:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 22:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 22:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 22:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 22:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 22:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 22:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 22:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 22:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 22:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 22:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 22:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 22:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 22:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 22:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 22:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 22:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 22:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 22:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 22:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)
+2026-05-23 22:00 +05:30: ✅ [Cleanup Job] Finished.
+2026-05-23 22:00 +05:30:    - Deleted 0 old messages (0 media files removed from Cloudinary)
+2026-05-23 22:00 +05:30:    - Deleted 0 old confessions (Ignored reported ones)

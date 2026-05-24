@@ -55,7 +55,8 @@ const createConfession = async (req, res) => {
             category: category || "secret",
             user: req.user._id,
             isAnonymous: finalIsAnonymous,
-            isHidden: isHidden
+            isHidden: isHidden,
+            collegeName: req.user.collegeName || ""
         });
 
         // Populate user only if NOT anonymous (for the creator's own view)
@@ -84,6 +85,7 @@ const getFeed = async (req, res) => {
         // We filter for non-hidden confessions from public users OR users we follow.
         const filter = {
             isHidden: false,
+            collegeName: currentUser.collegeName || "",
             $or: [
                 { isPrivate: { $ne: true } },
                 { user: { $in: [...(currentUser.following || []), currentUser._id] } }

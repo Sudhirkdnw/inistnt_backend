@@ -15,6 +15,7 @@ const chatRoutes = require('./routes/chat.routes');
 const datingRoutes = require('./routes/dating.routes');
 const reportRoutes = require('./routes/report.routes');
 const monitoringRoutes = require('./routes/monitoring.routes');
+const collegeRoutes = require('./routes/college.routes');
 const cors = require('cors');
 
 const app = express();
@@ -95,6 +96,7 @@ app.use("/api/dating", datingRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/monitoring", monitoringRoutes);
+app.use("/api/colleges", collegeRoutes);
 
 app.get("/api/health", (req, res) => {
     res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });

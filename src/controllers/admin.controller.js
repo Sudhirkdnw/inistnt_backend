@@ -258,13 +258,26 @@ const deleteAnyConfession = async (req, res) => {
 // GET /api/admin/reports
 const getReports = async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const skip = (page - 1) * limit;
         const status = req.query.status || "pending";
-        const reports = await reportModel.find({ status })
+        
+        const filter = status === 'all' ? {} : { status };
+
+        const reports = await reportModel.find(filter)
             .populate("reporter", "username avatar")
             .populate("targetId")
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
 
-        res.status(200).json({ reports });
+        const total = await reportModel.countDocuments(filter);
+
+        res.status(200).json({ 
+            reports, 
+            pagination: { page, limit, total, pages: Math.ceil(total / limit) } 
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -1158,6 +1171,172 @@ const bulkHandleVerifications = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+// ─── COLLEGE MANAGEMENT ─────────────────────────────────
+
+const getColleges = async (req, res) => {
+    try {
+        const College = require("../models/college.model");
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const skip = (page - 1) * limit;
+        const search = req.query.search || '';
+
+        let filter = {};
+        if (search) {
+            filter.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { aliases: { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        const colleges = await College.find(filter).sort({ name: 1 }).skip(skip).limit(limit).lean();
+        const total = await College.countDocuments(filter);
+
+        res.status(200).json({ 
+            colleges, 
+            pagination: { page, limit, total, pages: Math.ceil(total / limit) } 
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const addCollege = async (req, res) => {
+    try {
+        const College = require("../models/college.model");
+        const { name, aliases, city, state } = req.body;
+        
+        if (!name) return res.status(400).json({ message: "College name is required" });
+
+        const college = await College.create({
+            name: name.trim(),
+            aliases: aliases || [],
+            city: city || "",
+            state: state || "",
+            addedByAdmin: true
+        });
+        
+        await logAudit(req.user._id, "ADD_COLLEGE", { collegeId: college._id, name });
+        res.status(201).json({ message: "College added", college });
+    } catch (error) {
+        if (error.code === 11000) return res.status(400).json({ message: "College already exists" });
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const updateCollege = async (req, res) => {
+    try {
+        const College = require("../models/college.model");
+        const { id } = req.params;
+        const { isActive, aliases } = req.body;
+        
+        const college = await College.findByIdAndUpdate(
+            id, 
+            { $set: { isActive, aliases } }, 
+            { new: true }
+        );
+        
+        if (!college) return res.status(404).json({ message: "College not found" });
+        
+        await logAudit(req.user._id, "UPDATE_COLLEGE", { collegeId: college._id });
+        res.status(200).json({ message: "College updated", college });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const deleteCollege = async (req, res) => {
+    try {
+        const College = require("../models/college.model");
+        const { id } = req.params;
+        
+        await College.findByIdAndDelete(id);
+        
+        await logAudit(req.user._id, "DELETE_COLLEGE", { collegeId: id });
+        res.status(200).json({ message: "College deleted" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const bulkUploadColleges = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: "No CSV file uploaded" });
+        }
+
+        const csvString = req.file.buffer.toString('utf-8');
+        
+        // Simple CSV parser supporting quotes
+        const parseCSV = (str) => {
+            const arr = [];
+            let quote = false;
+            for (let row = 0, col = 0, c = 0; c < str.length; c++) {
+                let cc = str[c], nc = str[c+1];
+                arr[row] = arr[row] || [];
+                arr[row][col] = arr[row][col] || '';
+                
+                if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; }
+                if (cc === '"') { quote = !quote; continue; }
+                if (cc === ',' && !quote) { ++col; continue; }
+                if (cc === '\r' && nc === '\n' && !quote) { ++row; col = 0; ++c; continue; }
+                if (cc === '\n' && !quote) { ++row; col = 0; continue; }
+                if (cc === '\r' && !quote) { ++row; col = 0; continue; }
+                arr[row][col] += cc;
+            }
+            return arr;
+        };
+
+        const rows = parseCSV(csvString).filter(row => row.length > 0 && row.some(cell => cell.trim()));
+        
+        if (rows.length < 2) {
+            return res.status(400).json({ message: "CSV file is empty or missing headers" });
+        }
+
+        // Assuming headers are: Name, Aliases, City, State
+        const headers = rows[0].map(h => h.trim().toLowerCase());
+        const nameIdx = headers.findIndex(h => h.includes('name'));
+        const aliasIdx = headers.findIndex(h => h.includes('alias'));
+        const cityIdx = headers.findIndex(h => h.includes('city'));
+        const stateIdx = headers.findIndex(h => h.includes('state'));
+
+        if (nameIdx === -1) {
+            return res.status(400).json({ message: "CSV must contain a 'Name' column" });
+        }
+
+        const College = require("../models/college.model");
+        let addedCount = 0;
+        let skippedCount = 0;
+
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            const name = row[nameIdx]?.trim();
+            if (!name) continue;
+
+            const aliases = aliasIdx !== -1 && row[aliasIdx] ? row[aliasIdx].split(',').map(s => s.trim()).filter(Boolean) : [];
+            const city = cityIdx !== -1 && row[cityIdx] ? row[cityIdx].trim() : "";
+            const state = stateIdx !== -1 && row[stateIdx] ? row[stateIdx].trim() : "";
+
+            try {
+                const exists = await College.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
+                if (!exists) {
+                    await College.create({ name, aliases, city, state, addedByAdmin: true });
+                    addedCount++;
+                } else {
+                    skippedCount++;
+                }
+            } catch (err) {
+                skippedCount++; // Duplicate key or other error
+            }
+        }
+
+        await logAudit(req.user._id, "BULK_UPLOAD_COLLEGES", { addedCount, skippedCount });
+        res.status(200).json({ message: `Successfully added ${addedCount} colleges. Skipped ${skippedCount} duplicates.` });
+
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
 
 module.exports = {
     getDashboard, getAllUsers, getUserDetails, toggleBan, changeRole, deleteUser, restoreUser,
@@ -1172,5 +1351,6 @@ module.exports = {
     getEmailLogs, getEmailTemplates, updateEmailTemplate, sendTestEmail,
     getMailConfig, updateMailConfig,
     exportUsers, bulkDeleteUsers, bulkDeleteConfessions, bulkConfessionsModeration,
-    exportReports, bulkReportsModeration, bulkHandleVerifications
+    exportReports, bulkReportsModeration, bulkHandleVerifications,
+    getColleges, addCollege, updateCollege, deleteCollege, bulkUploadColleges
 };

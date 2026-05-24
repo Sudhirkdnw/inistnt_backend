@@ -583,19 +583,48 @@ async function getSuggestions(req, res) {
     try {
         const currentUser = await userModel.findById(req.user._id);
 
-        const suggestions = await userModel.find({
-            _id: { $nin: [...currentUser.following, currentUser._id] },
-            isBanned: false
-        })
-            .select("username fullName avatar followers")
-            .limit(10)
+        const baseFilter = {
+            _id: { $nin: [...(currentUser.following || []), currentUser._id] },
+            isBanned: false,
+            isSoftDeleted: false
+        };
+
+        let sameCollegeSuggestions = [];
+        if (currentUser.collegeName) {
+            sameCollegeSuggestions = await userModel.find({ ...baseFilter, collegeName: currentUser.collegeName })
+                .select("username fullName avatar followers isPrivate collegeName")
+                .limit(10)
+                .lean();
+        }
+
+        const sameCollegeIds = sameCollegeSuggestions.map(u => u._id);
+        
+        let genericSuggestions = [];
+        if (sameCollegeSuggestions.length < 15) {
+            genericSuggestions = await userModel.find({
+                ...baseFilter,
+                _id: { $nin: [...(currentUser.following || []), currentUser._id, ...sameCollegeIds] }
+            })
+            .select("username fullName avatar followers isPrivate collegeName")
+            .limit(15 - sameCollegeSuggestions.length)
             .sort({ createdAt: -1 })
             .lean();
+        }
 
-        // Add follower count for sorting
+        const suggestions = [...sameCollegeSuggestions, ...genericSuggestions];
+
+        // Add follower count for sorting, prioritize college match
         const sorted = suggestions
-            .map(u => ({ ...u, followersCount: u.followers.length }))
-            .sort((a, b) => b.followersCount - a.followersCount);
+            .map(u => ({ 
+                ...u, 
+                followersCount: u.followers?.length || 0,
+                isCollegeMatch: u.collegeName && u.collegeName === currentUser.collegeName
+            }))
+            .sort((a, b) => {
+                if (a.isCollegeMatch && !b.isCollegeMatch) return -1;
+                if (!a.isCollegeMatch && b.isCollegeMatch) return 1;
+                return b.followersCount - a.followersCount;
+            });
 
         res.status(200).json({ users: sorted });
     } catch (error) {
