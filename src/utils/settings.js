@@ -69,6 +69,31 @@ const syncSettings = async () => {
 
         await Setting.bulkWrite(bulkOps);
         console.log("✅ System configuration synchronized with defaults");
+
+        // Auto-correct outdated values in database settings collection to prevent unverified domain delivery failures
+        const mailFromAddressRes = await Setting.updateMany(
+            { key: { $in: ["mail_from_address", "mail_reply_to", "support_email"] }, value: /socialmini\.edu/ },
+            { $set: { value: "support@inistnt.in" } }
+        );
+        if (mailFromAddressRes.modifiedCount > 0) {
+            console.log(`[Migration] Updated ${mailFromAddressRes.modifiedCount} mail settings with old domain 'socialmini.edu' to 'support@inistnt.in'`);
+        }
+
+        const platformNameRes = await Setting.updateMany(
+            { key: { $in: ["platform_name", "company_name"] }, value: { $in: ["Social Mini", "Zynk", "SocialMini", "social_mini"] } },
+            { $set: { value: "Inistnt" } }
+        );
+        if (platformNameRes.modifiedCount > 0) {
+            console.log(`[Migration] Updated ${platformNameRes.modifiedCount} platform/company name settings to 'Inistnt'`);
+        }
+
+        const footerTextRes = await Setting.updateMany(
+            { key: "footer_text", value: /Social Mini|Zynk/ },
+            { $set: { value: "© 2026 Inistnt. All rights reserved." } }
+        );
+        if (footerTextRes.modifiedCount > 0) {
+            console.log(`[Migration] Updated footer text to use 'Inistnt'`);
+        }
     } catch (err) {
         console.error("❌ Failed to sync settings:", err.message);
     }
