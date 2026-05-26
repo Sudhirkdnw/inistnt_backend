@@ -16,6 +16,7 @@ const datingRoutes = require('./routes/dating.routes');
 const reportRoutes = require('./routes/report.routes');
 const monitoringRoutes = require('./routes/monitoring.routes');
 const collegeRoutes = require('./routes/college.routes');
+const subscriptionRoutes = require('./routes/subscription.routes');
 const cors = require('cors');
 
 const app = express();
@@ -93,6 +94,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/dating", datingRoutes);
+app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/monitoring", monitoringRoutes);

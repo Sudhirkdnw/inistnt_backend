@@ -120,15 +120,84 @@ async function sendEmailAsync({ to, subject, htmlBody, textBody, templateName })
 }
 
 /**
+ * Helper to fetch a template from DB, substitute variables, and wrap in layout.
+ * Falls back to null if template not found or error occurs.
+ */
+async function renderDbTemplate(templateName, variables) {
+    try {
+        const EmailTemplate = require("../../models/emailTemplate.model");
+        const template = await EmailTemplate.findOne({ name: templateName });
+        if (!template) return null;
+
+        const platformName = getSetting("platform_name", "Inistnt");
+        const supportEmail = getSetting("support_email", "support@inistnt.in");
+        const supportPhone = getSetting("support_phone", "+91 70707 99200");
+        const companyName = getSetting("company_name", "Inistnt");
+        const companyAddress = getSetting("company_address", "Greater Noida");
+        const platformDescription = getSetting("platform_description", "College Confession & Dating Platform");
+        const dateFormat = getSetting("date_format", "MMM DD, YYYY");
+        const defaultCurrency = getSetting("default_currency", "IN");
+        const defaultLanguage = getSetting("default_language", "en");
+        const timezone = getSetting("timezone", "UTC");
+
+        let content = template.content;
+        let subject = template.subject;
+
+        const allVars = {
+            ...variables,
+            platform_name: platformName,
+            support_email: supportEmail,
+            support_phone: supportPhone,
+            company_name: companyName,
+            company_address: companyAddress,
+            platform_description: platformDescription,
+            date_format: dateFormat,
+            default_currency: defaultCurrency,
+            default_language: defaultLanguage,
+            timezone: timezone
+        };
+
+        Object.entries(allVars).forEach(([key, val]) => {
+            const regex = new RegExp(`{{${key}}}`, 'g');
+            content = content.replace(regex, typeof val === 'string' ? val : String(val));
+            subject = subject.replace(regex, typeof val === 'string' ? val : String(val));
+        });
+
+        let htmlBody = content;
+        if (!content.includes("<!DOCTYPE html>") && !content.includes("<html>")) {
+            htmlBody = templatesModule.getMasterLayout(subject, content, platformName);
+        }
+
+        return { subject, htmlBody };
+    } catch (err) {
+        console.error(`⚠️ Failed to load template '${templateName}' from DB:`, err.message);
+        return null;
+    }
+}
+
+/**
  * Public API 1: sendVerificationEmail(email, code, username)
  * Dispatches a premium verification OTP email.
  */
 async function sendVerificationEmail(email, code, username = "") {
-    const platformName = getSetting("platform_name", "Social Mini");
+    const platformName = getSetting("platform_name", "Inistnt");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
-    const subject = `${code} is your ${platformName} verification code`;
-    const htmlBody = templatesModule.renderOtpVerification(code, cleanUsername, platformName);
+    const dbTemplate = await renderDbTemplate("otp_verification", {
+        otp: code,
+        code: code,
+        username: cleanUsername
+    });
+
+    let subject, htmlBody;
+    if (dbTemplate) {
+        subject = dbTemplate.subject;
+        htmlBody = dbTemplate.htmlBody;
+    } else {
+        subject = `${code} is your ${platformName} verification code`;
+        htmlBody = templatesModule.renderOtpVerification(code, cleanUsername, platformName);
+    }
+
     const textBody = `Welcome to ${platformName}! Use verification code ${code} to verify your email address.`;
 
     return sendEmailAsync({
@@ -141,11 +210,11 @@ async function sendVerificationEmail(email, code, username = "") {
 }
 
 /**
- * Public API 2: sendGeneralEmail(to, subject, bodyHtml, text)
+ * Public API 2: sendGeneralEmail(to, subject, bodyHtml, text = "", templateName = "general")
  * Dispatches standard HTML emails wrapped in the premium master layout.
  */
 async function sendGeneralEmail(to, subject, bodyHtml, text = "", templateName = "general") {
-    const platformName = getSetting("platform_name", "Social Mini");
+    const platformName = getSetting("platform_name", "Inistnt");
     const cleanSubject = clientModule.sanitizeEmailInput(subject);
 
     let htmlBody = bodyHtml;
@@ -168,11 +237,21 @@ async function sendGeneralEmail(to, subject, bodyHtml, text = "", templateName =
  * Dispatches a premium welcome email upon successful verification.
  */
 async function sendWelcomeEmail(email, username = "") {
-    const platformName = getSetting("platform_name", "Social Mini");
+    const platformName = getSetting("platform_name", "Inistnt");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
-    const subject = `Welcome to ${platformName}! 🎉`;
-    const htmlBody = templatesModule.renderWelcomeEmail(cleanUsername, platformName);
+    const dbTemplate = await renderDbTemplate("welcome_email", {
+        username: cleanUsername
+    });
+
+    let subject, htmlBody;
+    if (dbTemplate) {
+        subject = dbTemplate.subject;
+        htmlBody = dbTemplate.htmlBody;
+    } else {
+        subject = `Welcome to ${platformName}! 🎉`;
+        htmlBody = templatesModule.renderWelcomeEmail(cleanUsername, platformName);
+    }
 
     return sendEmailAsync({
         to: email,
@@ -187,11 +266,25 @@ async function sendWelcomeEmail(email, username = "") {
  * Dispatches an urgent security notification.
  */
 async function sendSecurityAlert(email, username = "", alertDetails = {}) {
-    const platformName = getSetting("platform_name", "Social Mini");
+    const platformName = getSetting("platform_name", "Inistnt");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
-    const subject = `🚨 Security Alert for your ${platformName} account`;
-    const htmlBody = templatesModule.renderSecurityAlert(alertDetails, cleanUsername, platformName);
+    const dbTemplate = await renderDbTemplate("security_alert", {
+        username: cleanUsername,
+        action: alertDetails.action || "New Account Activity",
+        ipAddress: alertDetails.ipAddress || "Unknown IP",
+        device: alertDetails.device || "Unknown Device",
+        time: alertDetails.time || new Date().toLocaleString()
+    });
+
+    let subject, htmlBody;
+    if (dbTemplate) {
+        subject = dbTemplate.subject;
+        htmlBody = dbTemplate.htmlBody;
+    } else {
+        subject = `🚨 Security Alert for your ${platformName} account`;
+        htmlBody = templatesModule.renderSecurityAlert(alertDetails, cleanUsername, platformName);
+    }
 
     return sendEmailAsync({
         to: email,
@@ -206,22 +299,32 @@ async function sendSecurityAlert(email, username = "", alertDetails = {}) {
  * Dispatches an account approval email to the verified student.
  */
 async function sendApprovalEmail(email, username = "") {
-    const platformName = getSetting("platform_name", "Zynk");
+    const platformName = getSetting("platform_name", "Inistnt");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
-    const subject = `Your ${platformName} account has been approved`;
-    const messageContent = `
-        <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
-            <p>Dear ${cleanUsername},</p>
-            <p>Your student identity has been verified successfully. You can now access ${platformName}.</p>
-            <p>Feel free to log in and start connecting with your fellow college peers right away!</p>
-            <div style="margin: 25px 0;">
-                <a href="${process.env.CLIENT_URL}/login" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Get Started</a>
+    const dbTemplate = await renderDbTemplate("account_approval", {
+        username: cleanUsername
+    });
+
+    let subject, htmlBody;
+    if (dbTemplate) {
+        subject = dbTemplate.subject;
+        htmlBody = dbTemplate.htmlBody;
+    } else {
+        subject = `Your ${platformName} account has been approved`;
+        const messageContent = `
+            <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
+                <p>Dear ${cleanUsername},</p>
+                <p>Your student identity has been verified successfully. You can now access ${platformName}.</p>
+                <p>Feel free to log in and start connecting with your fellow college peers right away!</p>
+                <div style="margin: 25px 0;">
+                    <a href="${process.env.CLIENT_URL}/login" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Get Started</a>
+                </div>
+                <p>Best regards,<br>The ${platformName} Support Team</p>
             </div>
-            <p>Best regards,<br>The ${platformName} Support Team</p>
-        </div>
-    `;
-    const htmlBody = templatesModule.getMasterLayout(subject, messageContent, platformName);
+        `;
+        htmlBody = templatesModule.getMasterLayout(subject, messageContent, platformName);
+    }
 
     return sendEmailAsync({
         to: email,
@@ -236,23 +339,34 @@ async function sendApprovalEmail(email, username = "") {
  * Dispatches a polite account rejection email.
  */
 async function sendRejectionEmail(email, username = "", reason = "") {
-    const platformName = getSetting("platform_name", "Zynk");
+    const platformName = getSetting("platform_name", "Inistnt");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
-    const subject = `Student Verification Update - ${platformName}`;
-    const messageContent = `
-        <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
-            <p>Dear ${cleanUsername},</p>
-            <p>Thank you for your interest in joining ${platformName}. We have reviewed the college ID card verification you provided.</p>
-            <p>Unfortunately, your verification could not be approved at this time for the following reason:</p>
-            <div style="background-color: #FEE2E2; border-left: 4px solid #EF4444; padding: 15px; margin: 20px 0; border-radius: 4px; color: #991B1B;">
-                <strong>Reason:</strong> ${reason || "The uploaded college ID card was blurry, expired, or did not match the provided university details."}
+    const dbTemplate = await renderDbTemplate("account_rejection", {
+        username: cleanUsername,
+        reason: reason || "The uploaded college ID card was blurry, expired, or did not match the provided university details."
+    });
+
+    let subject, htmlBody;
+    if (dbTemplate) {
+        subject = dbTemplate.subject;
+        htmlBody = dbTemplate.htmlBody;
+    } else {
+        subject = `Student Verification Update - ${platformName}`;
+        const messageContent = `
+            <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
+                <p>Dear ${cleanUsername},</p>
+                <p>Thank you for your interest in joining ${platformName}. We have reviewed the college ID card verification you provided.</p>
+                <p>Unfortunately, your verification could not be approved at this time for the following reason:</p>
+                <div style="background-color: #FEE2E2; border-left: 4px solid #EF4444; padding: 15px; margin: 20px 0; border-radius: 4px; color: #991B1B;">
+                    <strong>Reason:</strong> ${reason || "The uploaded college ID card was blurry, expired, or did not match the provided university details."}
+                </div>
+                <p>If you believe this was an error, please sign up again with a clearer picture of your student ID card or try verifying using a valid college email address.</p>
+                <p>Best regards,<br>The ${platformName} Team</p>
             </div>
-            <p>If you believe this was an error, please sign up again with a clearer picture of your student ID card or try verifying using a valid college email address.</p>
-            <p>Best regards,<br>The ${platformName} Team</p>
-        </div>
-    `;
-    const htmlBody = templatesModule.getMasterLayout(subject, messageContent, platformName);
+        `;
+        htmlBody = templatesModule.getMasterLayout(subject, messageContent, platformName);
+    }
 
     return sendEmailAsync({
         to: email,

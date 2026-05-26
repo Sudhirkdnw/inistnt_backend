@@ -7,6 +7,7 @@ const Comment = require("../models/comment.model");
 const Conversation = require("../models/conversation.model");
 const Message = require("../models/message.model");
 const { uploadAvatar } = require('../utils/cloudinary');
+const premiumSettingsModel = require("../models/premiumSettings.model");
 const crypto = require("crypto");
 const { sendVerificationEmail } = require("../services/emailService");
 
@@ -14,7 +15,7 @@ const { sendVerificationEmail } = require("../services/emailService");
 async function getUserProfile(req, res) {
     try {
         const user = await userModel.findById(req.params.id)
-            .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt")
+            .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt isPremium")
             .populate("followers", "username fullName avatar")
             .populate("following", "username fullName avatar")
             .lean();
@@ -40,20 +41,34 @@ async function getUserProfile(req, res) {
             responseUser.isPrivateHidden = true; // Flag for frontend
             responseUser.datingPhotos = []; // Privacy: Unauthorized users see nothing
         } else {
-            // Fetch dating photos
-            // Logic: Owner sees photos even if not active. 
-            // Others only see photos if dating is active.
-            const query = { user: targetUserId };
-            if (!isOwner) query.isDatingActive = true;
-            
-            const datingProfile = await DatingProfile.findOne(query);
-            if (datingProfile) {
-                // Use photoOrder if it exists, fallback to photos
-                responseUser.datingPhotos = datingProfile.photoOrder && datingProfile.photoOrder.length > 0 
-                    ? datingProfile.photoOrder 
-                    : datingProfile.photos;
-            } else {
+            // Check if requester has premium if premium requirement is ON
+            let isRequesterPremium = true;
+            let settings = await premiumSettingsModel.findOne();
+            const isPremiumRequired = settings ? settings.isPremiumRequired : true;
+
+            if (isPremiumRequired && req.user.role !== "admin") {
+                const now = new Date();
+                isRequesterPremium = req.user.isPremium && req.user.premiumExpireAt && new Date(req.user.premiumExpireAt) > now;
+            }
+
+            if (!isRequesterPremium) {
                 responseUser.datingPhotos = [];
+            } else {
+                // Fetch dating photos
+                // Logic: Owner sees photos even if not active. 
+                // Others only see photos if dating is active.
+                const query = { user: targetUserId };
+                if (!isOwner) query.isDatingActive = true;
+                
+                const datingProfile = await DatingProfile.findOne(query);
+                if (datingProfile) {
+                    // Use photoOrder if it exists, fallback to photos
+                    responseUser.datingPhotos = datingProfile.photoOrder && datingProfile.photoOrder.length > 0 
+                        ? datingProfile.photoOrder 
+                        : datingProfile.photos;
+                } else {
+                    responseUser.datingPhotos = [];
+                }
             }
         }
 

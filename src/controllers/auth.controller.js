@@ -258,6 +258,14 @@ async function loginController(req, res) {
 
         if (!user) {
             InfrastructureLogger.security("WARNING", `Failed login attempt for non-existent user "${username}"`, { username, ip: req.ip });
+            const adminLoginLogModel = require("../models/adminLoginLog.model");
+            await adminLoginLogModel.create({
+                username: username.toLowerCase(),
+                status: "failed_credentials",
+                ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+                userAgent: req.headers["user-agent"] || "",
+                failureReason: "User not found"
+            });
             return res.status(404).json({ message: "User not found" });
         }
 
@@ -301,11 +309,76 @@ async function loginController(req, res) {
                 username: user.username,
                 ip: req.ip
             }, user._id);
+
+            if (user.role === 'admin' || user.role === 'superadmin') {
+                const adminLoginLogModel = require("../models/adminLoginLog.model");
+                await adminLoginLogModel.create({
+                    username: user.username,
+                    user: user._id,
+                    status: "failed_credentials",
+                    ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+                    userAgent: req.headers["user-agent"] || "",
+                    failureReason: "Invalid password"
+                });
+            }
+
             return res.status(401).json({ message: "Invalid credentials" });
         }
 
         const metadata = getRequestMetadata(req);
         const isSuspicious = checkSuspicious(user.loginHistory, metadata);
+
+        if (user.role === 'admin' || user.role === 'superadmin') {
+            const otpVerificationModel = require("../models/otpVerification.model");
+            let otpVerification = await otpVerificationModel.findOne({ user: user._id });
+
+            if (otpVerification && new Date() < otpVerification.resendCooldown) {
+                const secondsLeft = Math.ceil((otpVerification.resendCooldown - Date.now()) / 1000);
+                return res.status(429).json({ message: `Please wait ${secondsLeft} seconds before requesting a new OTP.` });
+            }
+
+            const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+            const otpHash = await bcrypt.hash(otpCode, 10);
+            const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins lifespan
+            const resendCooldown = new Date(Date.now() + 60 * 1000); // 60s cooldown
+
+            if (otpVerification) {
+                otpVerification.otpHash = otpHash;
+                otpVerification.expiresAt = expiresAt;
+                otpVerification.resendCooldown = resendCooldown;
+                otpVerification.failedAttempts = 0;
+                await otpVerification.save();
+            } else {
+                await otpVerificationModel.create({
+                    user: user._id,
+                    otpHash,
+                    expiresAt,
+                    resendCooldown,
+                    failedAttempts: 0
+                });
+            }
+
+            try {
+                const { sendVerificationEmail } = require("../services/emailService");
+                await sendVerificationEmail(user.email || user.collegeEmail || "admin@example.com", otpCode, user.username);
+                InfrastructureLogger.email("SUCCESS", `Sent admin login OTP email to "${user.username}"`, {
+                    userId: user._id,
+                    email: user.email || user.collegeEmail
+                });
+            } catch (emailErr) {
+                InfrastructureLogger.email("ERROR", `Failed to send admin login OTP: ${emailErr.message}`);
+            }
+
+            console.log(`🔑 [DEVELOPMENT DEBUG] ADMIN OTP CODE FOR @${user.username}: ${otpCode}`);
+
+            const tempToken = jwt.sign({ id: user._id, type: "temp_otp" }, process.env.JWT_SECRET, { expiresIn: "5m" });
+
+            return res.status(200).json({
+                otpRequired: true,
+                tempToken,
+                email: user.email || user.collegeEmail
+            });
+        }
 
         user.lastIp = metadata.ip;
         user.lastActive = new Date();
@@ -357,7 +430,9 @@ async function getMeController(req, res) {
         if (!req.user) {
             return res.status(200).json({ user: null });
         }
-        const user = await userModel.findById(req.user._id).select("-password");
+        const user = await userModel.findById(req.user._id)
+            .select("-password")
+            .populate("roleRef", "name permissions");
         res.status(200).json({ user });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -458,6 +533,301 @@ async function resetPasswordController(req, res) {
     }
 }
 
+async function verifyAdminOtpController(req, res) {
+    try {
+        const { otp, tempToken } = req.body;
+        if (!otp || !tempToken) {
+            return res.status(400).json({ message: "OTP and temporary token are required" });
+        }
+
+        let decoded;
+        try {
+            decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+        } catch (err) {
+            return res.status(401).json({ message: "OTP session expired. Please log in again." });
+        }
+
+        if (decoded.type !== "temp_otp") {
+            return res.status(401).json({ message: "Invalid token type" });
+        }
+
+        const user = await userModel.findById(decoded.id).populate("roleRef");
+        if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
+            return res.status(404).json({ message: "User not found or unauthorized" });
+        }
+
+        const otpVerificationModel = require("../models/otpVerification.model");
+        const otpVerification = await otpVerificationModel.findOne({ user: user._id });
+
+        if (!otpVerification) {
+            return res.status(400).json({ message: "No active OTP session found. Please login again." });
+        }
+
+        if (new Date() > otpVerification.expiresAt) {
+            return res.status(400).json({ message: "OTP has expired. Please login again." });
+        }
+
+        if (otpVerification.failedAttempts >= 3) {
+            return res.status(400).json({ message: "Maximum failed attempts reached. This OTP has been invalidated. Please login again." });
+        }
+
+        const isOtpMatch = await bcrypt.compare(otp, otpVerification.otpHash);
+        const adminLoginLogModel = require("../models/adminLoginLog.model");
+
+        if (!isOtpMatch) {
+            otpVerification.failedAttempts += 1;
+            await otpVerification.save();
+
+            await adminLoginLogModel.create({
+                username: user.username,
+                user: user._id,
+                status: "failed_otp",
+                ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+                userAgent: req.headers["user-agent"] || "",
+                failureReason: `Invalid OTP code. Attempts: ${otpVerification.failedAttempts}`
+            });
+
+            if (otpVerification.failedAttempts >= 3) {
+                await otpVerificationModel.deleteOne({ _id: otpVerification._id });
+                return res.status(400).json({ message: "Invalid OTP code. Maximum failed attempts reached. This OTP has been invalidated. Please login again." });
+            }
+
+            return res.status(400).json({
+                message: `Invalid OTP code. You have ${3 - otpVerification.failedAttempts} attempts remaining.`
+            });
+        }
+
+        // Clean up OTP record
+        await otpVerificationModel.deleteOne({ _id: otpVerification._id });
+
+        // Log successful login
+        await adminLoginLogModel.create({
+            username: user.username,
+            user: user._id,
+            status: "success",
+            ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+            userAgent: req.headers["user-agent"] || "",
+        });
+
+        // Setup session metadata
+        const metadata = getRequestMetadata(req);
+        const isSuspicious = checkSuspicious(user.loginHistory, metadata);
+        user.lastIp = metadata.ip;
+        user.lastActive = new Date();
+        user.loginHistory.push({ ...metadata, isSuspicious });
+        await user.save();
+
+        // Sign new short-lived Access Token and rotating Refresh Token
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
+        const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+        const refreshTokenHash = crypto.createHash("sha256").update(refreshToken).digest("hex");
+
+        // Save session to database
+        const adminSessionModel = require("../models/adminSession.model");
+        await adminSessionModel.create({
+            user: user._id,
+            refreshTokenHash,
+            browser: metadata.browser,
+            os: metadata.os,
+            device: metadata.device,
+            ipAddress: metadata.ip,
+            location: `${metadata.city}, ${metadata.country}`,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            isValid: true
+        });
+
+        res.cookie("token", token, getCookieOptions(15 * 60 * 1000));
+        res.cookie("refreshToken", refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+
+        const defaultPermissions = {
+            userManagement: { view: true, create: true, update: true, delete: true },
+            reports: { view: true, create: true, update: true, delete: true },
+            stories: { view: true, create: true, update: true, delete: true },
+            posts: { view: true, create: true, update: true, delete: true },
+            dating: { view: true, create: true, update: true, delete: true },
+            premium: { view: true, create: true, update: true, delete: true },
+            payments: { view: true, create: true, update: true, delete: true },
+            communities: { view: true, create: true, update: true, delete: true },
+            analytics: { view: true, create: true, update: true, delete: true },
+            verificationRequests: { view: true, create: true, update: true, delete: true }
+        };
+
+        // Determine permissions: check roleRef, fall back to adminPermissions, fall back to defaults
+        let adminPermissions = defaultPermissions;
+        if (user.roleRef) {
+            adminPermissions = user.roleRef.permissions || defaultPermissions;
+        } else if (user.adminPermissions && Object.keys(user.adminPermissions.toObject ? user.adminPermissions.toObject() : user.adminPermissions).length > 0) {
+            adminPermissions = user.adminPermissions;
+        }
+
+        return res.status(200).json({
+            token,
+            refreshToken,
+            user: {
+                _id: user._id,
+                username: user.username,
+                email: user.email,
+                fullName: user.fullName,
+                avatar: user.avatar,
+                role: user.role,
+                adminRole: user.adminRole || (user.username === 'admin' ? 'superadmin' : 'admin'),
+                adminPermissions: adminPermissions,
+                verificationStatus: user.verificationStatus,
+                collegeName: user.collegeName
+            }
+        });
+    } catch (error) {
+        return res.status(401).json({ message: error.message });
+    }
+}
+
+async function resendOtpController(req, res) {
+    try {
+        const { tempToken } = req.body;
+        if (!tempToken) {
+            return res.status(400).json({ message: "Temporary token is required" });
+        }
+
+        let decoded;
+        try {
+            decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+        } catch (err) {
+            return res.status(401).json({ message: "Temporary session expired. Please login again." });
+        }
+
+        if (decoded.type !== "temp_otp") {
+            return res.status(401).json({ message: "Invalid token type" });
+        }
+
+        const user = await userModel.findById(decoded.id);
+        if (!user || user.role !== 'admin') {
+            return res.status(404).json({ message: "User not found or unauthorized" });
+        }
+
+        const otpVerificationModel = require("../models/otpVerification.model");
+        let otpVerification = await otpVerificationModel.findOne({ user: user._id });
+
+        if (otpVerification && new Date() < otpVerification.resendCooldown) {
+            const secondsLeft = Math.ceil((otpVerification.resendCooldown - Date.now()) / 1000);
+            return res.status(429).json({ message: `Please wait ${secondsLeft} seconds before requesting a new OTP.` });
+        }
+
+        const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpHash = await bcrypt.hash(otpCode, 10);
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins lifespan
+        const resendCooldown = new Date(Date.now() + 60 * 1000); // 60s cooldown
+
+        if (otpVerification) {
+            otpVerification.otpHash = otpHash;
+            otpVerification.expiresAt = expiresAt;
+            otpVerification.resendCooldown = resendCooldown;
+            otpVerification.failedAttempts = 0;
+            await otpVerification.save();
+        } else {
+            await otpVerificationModel.create({
+                user: user._id,
+                otpHash,
+                expiresAt,
+                resendCooldown,
+                failedAttempts: 0
+            });
+        }
+
+        // Keep development debug output
+        console.log(`🔑 [DEVELOPMENT DEBUG] RESENT ADMIN OTP CODE FOR @${user.username}: ${otpCode}`);
+
+        // Send email
+        try {
+            const { sendVerificationEmail } = require("../services/emailService");
+            await sendVerificationEmail(user.email || user.collegeEmail || "admin@example.com", otpCode, user.username);
+            InfrastructureLogger.email("SUCCESS", `Resent admin login OTP email to "${user.username}"`, {
+                userId: user._id,
+                email: user.email || user.collegeEmail
+            });
+        } catch (emailErr) {
+            InfrastructureLogger.email("ERROR", `Failed to send resent admin login OTP: ${emailErr.message}`);
+        }
+
+        return res.status(200).json({ message: "OTP resent successfully", email: user.email || user.collegeEmail });
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+}
+
+async function refreshTokenController(req, res) {
+    try {
+        let refreshToken = req.cookies.refreshToken;
+        if (!refreshToken && req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+            refreshToken = req.headers.authorization.split(" ")[1];
+        }
+
+        if (!refreshToken) {
+            return res.status(401).json({ message: "Refresh token is missing" });
+        }
+
+        let decoded;
+        try {
+            decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+        } catch (err) {
+            return res.status(401).json({ message: "Invalid or expired refresh token" });
+        }
+
+        const refreshTokenHash = crypto.createHash("sha256").update(refreshToken).digest("hex");
+        const adminSessionModel = require("../models/adminSession.model");
+        const session = await adminSessionModel.findOne({ refreshTokenHash });
+
+        if (!session) {
+            // Token Reuse / Theft Detection: 
+            // If someone tries to refresh with a token that is not found, but we can decode it,
+            // let's check if there is an inactive/invalidated session with this hash, which indicates token reuse!
+            const reusedSession = await adminSessionModel.findOne({ refreshTokenHash, isValid: false });
+            if (reusedSession) {
+                // Invalidate all sessions for this user!
+                await adminSessionModel.updateMany({ user: reusedSession.user }, { isValid: false });
+                if (global.ioInstance) {
+                    global.ioInstance.in(`user:${reusedSession.user}`).emit("force-logout", { all: true });
+                    global.ioInstance.in(`user:${reusedSession.user}`).disconnectSockets(true);
+                }
+                InfrastructureLogger.security("ALERT", `Detected Refresh Token Reuse! Invalidated all sessions for admin ID: ${reusedSession.user}`, {
+                    userId: reusedSession.user
+                });
+            }
+            return res.status(401).json({ message: "Invalid session" });
+        }
+
+        if (!session.isValid || new Date() > session.expiresAt) {
+            session.isValid = false;
+            await session.save();
+            return res.status(401).json({ message: "Session has expired or been revoked" });
+        }
+
+        // Generate new Access and Refresh tokens
+        const user = await userModel.findById(decoded.id);
+        if (!user || user.role !== 'admin') {
+            return res.status(401).json({ message: "Unauthorized user" });
+        }
+
+        const newAccessToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
+        const newRefreshToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+        const newRefreshTokenHash = crypto.createHash("sha256").update(newRefreshToken).digest("hex");
+
+        // Rotate the token on the session
+        session.refreshTokenHash = newRefreshTokenHash;
+        session.expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await session.save();
+
+        res.cookie("token", newAccessToken, getCookieOptions(15 * 60 * 1000));
+        res.cookie("refreshToken", newRefreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+
+        return res.status(200).json({
+            token: newAccessToken,
+            refreshToken: newRefreshToken
+        });
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+}
+
 module.exports = {
     sendOtpController,
     registerController,
@@ -465,5 +835,8 @@ module.exports = {
     logoutController,
     getMeController,
     forgotPasswordController,
-    resetPasswordController
+    resetPasswordController,
+    verifyAdminOtpController,
+    resendOtpController,
+    refreshTokenController
 };

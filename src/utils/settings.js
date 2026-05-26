@@ -8,14 +8,14 @@ let cachedSettings = {};
 const syncSettings = async () => {
     try {
         const defaults = [
-            { key: 'platform_name', value: 'Social Mini', description: 'The public name of the platform', category: 'General' },
+            { key: 'platform_name', value: 'Inistnt', description: 'The public name of the platform', category: 'General' },
             { key: 'platform_description', value: 'College Confession & Dating Platform', description: 'SEO description of the site', category: 'General' },
             { key: 'support_email', value: 'support@inistnt.in', description: 'Official contact email for users', category: 'General' },
-            { key: 'support_phone', value: '+1 (555) 000-0000', description: 'Support contact number', category: 'General' },
-            { key: 'company_name', value: 'Social Mini Inc.', description: 'Legal company name', category: 'General' },
-            { key: 'company_address', value: '123 Campus Lane, Education City', description: 'Business address', category: 'General' },
+            { key: 'support_phone', value: '+91 70707 99200', description: 'Support contact number', category: 'General' },
+            { key: 'company_name', value: 'Inistnt', description: 'Legal company name', category: 'General' },
+            { key: 'company_address', value: 'Greater Noida', description: 'Business address', category: 'General' },
             { key: 'default_language', value: 'en', description: 'System default language', category: 'General' },
-            { key: 'default_currency', value: 'USD', description: 'Platform currency code', category: 'General' },
+            { key: 'default_currency', value: 'IN', description: 'Platform currency code', category: 'General' },
             { key: 'timezone', value: 'UTC', description: 'System default timezone', category: 'General' },
             { key: 'date_format', value: 'MMM DD, YYYY', description: 'Display date format', category: 'General' },
             { key: 'maintenance_mode', value: false, description: 'Disable all user interactions', category: 'Security' },
@@ -33,7 +33,7 @@ const syncSettings = async () => {
             { key: 'max_confession_length', value: 2000, category: 'Content' },
             { key: 'confession_approval_mode', value: false, category: 'Content' },
             { key: 'homepage_banner_text', value: 'The safest place for your secrets.', category: 'Content' },
-            { key: 'footer_text', value: '© 2026 Social Mini. All rights reserved.', category: 'Content' },
+            { key: 'footer_text', value: '© 2026 Inistnt. All rights reserved.', category: 'Content' },
             { key: 'anonymous_chat', value: true, category: 'Features' },
             { key: 'dating_module', value: true, category: 'Features' },
             { key: 'min_dating_photos', value: 1, category: 'Features' },
@@ -51,7 +51,7 @@ const syncSettings = async () => {
             { key: 'mail_username', value: '', description: 'SMTP username/email', category: 'Mail' },
             { key: 'mail_password', value: '', description: 'SMTP password (stored encrypted)', category: 'Mail' },
             { key: 'mail_from_address', value: 'support@inistnt.in', description: 'Sender email address', category: 'Mail' },
-            { key: 'mail_from_name', value: 'Social Mini', description: 'Sender display name', category: 'Mail' },
+            { key: 'mail_from_name', value: 'Inistnt', description: 'Sender display name', category: 'Mail' },
             { key: 'mail_reply_to', value: 'support@inistnt.in', description: 'Reply-to email address', category: 'Mail' }
         ];
 

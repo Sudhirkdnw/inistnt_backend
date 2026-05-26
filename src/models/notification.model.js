@@ -43,6 +43,8 @@ const notificationSchema = new mongoose.Schema({
 notificationSchema.index({ recipient: 1, isRead: 1, createdAt: -1 });
 // Cursor-based pagination support for notification panel
 notificationSchema.index({ recipient: 1, isRead: 1, _id: -1 });
+// Listing query: recipient filter, newest first
+notificationSchema.index({ recipient: 1, createdAt: -1 });
 
 const notificationModel = mongoose.model("notification", notificationSchema);
 

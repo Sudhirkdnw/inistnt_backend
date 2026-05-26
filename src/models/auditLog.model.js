@@ -30,8 +30,43 @@ const auditLogSchema = new mongoose.Schema({
     ipAddress: {
         type: String,
         default: ""
+    },
+    previousValues: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null
+    },
+    updatedValues: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null
     }
 }, { timestamps: true });
+
+// Pre-hooks to prevent updating or deleting logs (immutability)
+auditLogSchema.pre("save", function(next) {
+    if (!this.isNew) {
+        return next(new Error("Audit logs are immutable and cannot be updated."));
+    }
+    next();
+});
+
+const blockUpdate = function(next) {
+    return next(new Error("Audit logs are immutable and cannot be updated."));
+};
+
+const blockDelete = function(next) {
+    return next(new Error("Audit logs are immutable and cannot be deleted."));
+};
+
+auditLogSchema.pre("updateOne", blockUpdate);
+auditLogSchema.pre("updateMany", blockUpdate);
+auditLogSchema.pre("findOneAndUpdate", blockUpdate);
+auditLogSchema.pre("findByIdAndUpdate", blockUpdate);
+
+auditLogSchema.pre("remove", blockDelete);
+auditLogSchema.pre("deleteOne", blockDelete);
+auditLogSchema.pre("deleteMany", blockDelete);
+auditLogSchema.pre("findOneAndDelete", blockDelete);
+auditLogSchema.pre("findOneAndRemove", blockDelete);
 
 // ── Indexes ─────────────────────────────────────────────
 // For searching logs by admin or target user efficiently

@@ -178,6 +178,97 @@ const userSchema = new mongoose.Schema({
     deletedByUser: {
         type: Boolean,
         default: false // true if user deleted it, false if admin deleted it
+    },
+    // Premium access fields
+    isPremium: {
+        type: Boolean,
+        default: false
+    },
+    premiumExpireAt: {
+        type: Date,
+        default: null
+    },
+    // Enterprise Admin Role & Permissions Settings
+    adminRole: {
+        type: String,
+        enum: ["superadmin", "admin", "moderator", "support", "none"],
+        default: "none"
+    },
+    roleRef: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "role",
+        default: null
+    },
+    adminPermissions: {
+        userManagement: {
+            view: { type: Boolean, default: false },
+            create: { type: Boolean, default: false },
+            update: { type: Boolean, default: false },
+            delete: { type: Boolean, default: false }
+        },
+        reports: {
+            view: { type: Boolean, default: false },
+            create: { type: Boolean, default: false },
+            update: { type: Boolean, default: false },
+            delete: { type: Boolean, default: false }
+        },
+        stories: {
+            view: { type: Boolean, default: false },
+            create: { type: Boolean, default: false },
+            update: { type: Boolean, default: false },
+            delete: { type: Boolean, default: false }
+        },
+        posts: {
+            view: { type: Boolean, default: false },
+            create: { type: Boolean, default: false },
+            update: { type: Boolean, default: false },
+            delete: { type: Boolean, default: false }
+        },
+        dating: {
+            view: { type: Boolean, default: false },
+            create: { type: Boolean, default: false },
+            update: { type: Boolean, default: false },
+            delete: { type: Boolean, default: false }
+        },
+        premium: {
+            view: { type: Boolean, default: false },
+            create: { type: Boolean, default: false },
+            update: { type: Boolean, default: false },
+            delete: { type: Boolean, default: false }
+        },
+        payments: {
+            view: { type: Boolean, default: false },
+            create: { type: Boolean, default: false },
+            update: { type: Boolean, default: false },
+            delete: { type: Boolean, default: false }
+        },
+        communities: {
+            view: { type: Boolean, default: false },
+            create: { type: Boolean, default: false },
+            update: { type: Boolean, default: false },
+            delete: { type: Boolean, default: false }
+        },
+        analytics: {
+            view: { type: Boolean, default: false },
+            create: { type: Boolean, default: false },
+            update: { type: Boolean, default: false },
+            delete: { type: Boolean, default: false }
+        },
+        verificationRequests: {
+            view: { type: Boolean, default: false },
+            create: { type: Boolean, default: false },
+            update: { type: Boolean, default: false },
+            delete: { type: Boolean, default: false }
+        }
+    },
+    // Admin Secure Login OTP
+    adminLoginOtp: {
+        type: String,
+        default: null
+    },
+    adminLoginOtpExpires: {
+        type: Date,
+        default: null
     }
 }, { timestamps: true });
 
@@ -201,6 +292,7 @@ userSchema.index({ role: 1, createdAt: -1 });
 userSchema.index({ collegeName: 1, verificationStatus: 1 });
 userSchema.index({ createdAt: -1 }); // Added for analytics
 userSchema.index({ verificationStatus: 1 }); // Added for dashboard queries
+userSchema.index({ isPremium: 1, premiumExpireAt: 1 }); // Added for fast premium checks
 
 const userModel = mongoose.model("user", userSchema);
 

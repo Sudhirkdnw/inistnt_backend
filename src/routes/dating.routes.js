@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { authMiddleware } = require("../middlewares/authmiddleware");
+const { checkPremiumAccess } = require("../middlewares/premium.middleware");
 const cacheMiddleware = require("../middlewares/cacheMiddleware");
 const {
     setupProfile,
@@ -19,6 +20,7 @@ const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
 
 router.use(authMiddleware);
+router.use(checkPremiumAccess);
 
 router.post("/profile", setupProfile);          // Create/update dating profile
 router.get("/profile/me", cacheMiddleware(30), getMyProfile);        // Get my dating profile

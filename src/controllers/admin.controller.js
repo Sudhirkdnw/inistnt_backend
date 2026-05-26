@@ -13,7 +13,9 @@ const logAudit = async (adminId, action, options = {}) => {
             targetUser: options.targetUser,
             targetConfession: options.targetConfession,
             details: options.details,
-            ipAddress: options.ipAddress
+            ipAddress: options.ipAddress,
+            previousValues: options.previousValues,
+            updatedValues: options.updatedValues
         });
     } catch (err) {
         console.error("Audit log failed:", err.message);
@@ -127,13 +129,22 @@ const toggleBan = async (req, res) => {
         const user = await userModel.findById(req.params.id);
         if (!user) return res.status(404).json({ message: "User not found" });
 
+        const previousValues = { isBanned: user.isBanned };
         user.isBanned = !user.isBanned;
         await user.save();
 
         await logAudit(req.user._id, user.isBanned ? 'BAN_USER' : 'UNBAN_USER', {
             targetUser: user._id,
-            ipAddress: req.ip
+            ipAddress: req.ip,
+            previousValues,
+            updatedValues: { isBanned: user.isBanned }
         });
+
+        // Real-time socket ban disconnect
+        if (user.isBanned && global.ioInstance) {
+            global.ioInstance.to(`user:${user._id}`).emit("force-logout", { message: "Your account has been banned by an administrator." });
+            global.ioInstance.in(`user:${user._id}`).disconnectSockets(true);
+        }
 
         res.status(200).json({ message: user.isBanned ? "User banned" : "User unbanned", isBanned: user.isBanned });
     } catch (error) {
@@ -149,13 +160,19 @@ const changeRole = async (req, res) => {
             return res.status(400).json({ message: "Invalid role" });
         }
 
-        const user = await userModel.findByIdAndUpdate(req.params.id, { role }, { returnDocument: 'after' }).select("-password");
+        const user = await userModel.findById(req.params.id);
         if (!user) return res.status(404).json({ message: "User not found" });
+
+        const previousValues = { role: user.role };
+        user.role = role;
+        await user.save();
 
         await logAudit(req.user._id, 'CHANGE_ROLE', {
             targetUser: user._id,
             details: `Role changed to ${role}`,
-            ipAddress: req.ip
+            ipAddress: req.ip,
+            previousValues,
+            updatedValues: { role: user.role }
         });
 
         res.status(200).json({ message: "Role updated", user });
@@ -437,6 +454,15 @@ const handleVerification = async (req, res) => {
         const user = await userModel.findById(req.params.id);
         if (!user) return res.status(404).json({ message: "User not found" });
 
+        const previousValues = {
+            verificationStatus: user.verificationStatus,
+            isVerified: user.isVerified,
+            rejectionReason: user.rejectionReason,
+            adminReviewNotes: user.adminReviewNotes,
+            reviewedBy: user.reviewedBy,
+            reviewedAt: user.reviewedAt
+        };
+
         const { sendApprovalEmail, sendRejectionEmail } = require("../services/emailService");
 
         if (action === "approve") {
@@ -468,7 +494,19 @@ const handleVerification = async (req, res) => {
                 targetUserId: user._id,
                 adminId: req.user._id
             });
-            await logAudit(req.user._id, "APPROVE_VERIFICATION", { targetUserId: user._id, notes });
+            await logAudit(req.user._id, "APPROVE_VERIFICATION", {
+                targetUser: user._id,
+                details: notes,
+                previousValues,
+                updatedValues: {
+                    verificationStatus: user.verificationStatus,
+                    isVerified: user.isVerified,
+                    rejectionReason: user.rejectionReason,
+                    adminReviewNotes: user.adminReviewNotes,
+                    reviewedBy: user.reviewedBy,
+                    reviewedAt: user.reviewedAt
+                }
+            });
         } else {
             user.verificationStatus = "REJECTED";
             user.isVerified = false;
@@ -500,7 +538,19 @@ const handleVerification = async (req, res) => {
                 adminId: req.user._id,
                 reason: user.rejectionReason
             });
-            await logAudit(req.user._id, "REJECT_VERIFICATION", { targetUserId: user._id, reason, notes });
+            await logAudit(req.user._id, "REJECT_VERIFICATION", {
+                targetUser: user._id,
+                details: `${reason} | ${notes}`,
+                previousValues,
+                updatedValues: {
+                    verificationStatus: user.verificationStatus,
+                    isVerified: user.isVerified,
+                    rejectionReason: user.rejectionReason,
+                    adminReviewNotes: user.adminReviewNotes,
+                    reviewedBy: user.reviewedBy,
+                    reviewedAt: user.reviewedAt
+                }
+            });
         }
 
         // Broadcast real-time Socket.IO update to all administrative observers
@@ -562,16 +612,55 @@ const handleDatingProfile = async (req, res) => {
 // GET /api/admin/audit-logs
 const getAuditLogs = async (req, res) => {
     try {
-        const logs = await auditLogModel.find()
-            .populate("admin", "username avatar")
-            .populate("targetUser", "username")
-            .sort({ createdAt: -1 })
-            .limit(100);
-        res.status(200).json({ logs });
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 15));
+        const skip = (page - 1) * limit;
+        const search = req.query.search?.trim();
+        const category = req.query.category?.trim().toUpperCase();
+
+        // Build filter query
+        const filter = {};
+        if (category) {
+            filter.action = { $regex: category, $options: 'i' };
+        }
+
+        // If searching by admin username, first resolve the admin IDs
+        let adminIdFilter = null;
+        if (search) {
+            const userModel = require('../models/user.model');
+            const matchingAdmins = await userModel.find(
+                { username: { $regex: search, $options: 'i' } },
+                '_id'
+            );
+            adminIdFilter = matchingAdmins.map(a => a._id);
+            filter.$or = [
+                { admin: { $in: adminIdFilter } },
+                { action: { $regex: search, $options: 'i' } },
+                { details: { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        const [logs, total] = await Promise.all([
+            auditLogModel.find(filter)
+                .populate('admin', 'username avatar')
+                .populate('targetUser', 'username')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            auditLogModel.countDocuments(filter)
+        ]);
+
+        res.status(200).json({
+            logs,
+            total,
+            page,
+            totalPages: Math.ceil(total / limit)
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
+
 
 // GET /api/admin/settings
 const getSettings = async (req, res) => {
@@ -741,8 +830,144 @@ const getEmailTemplates = async (req, res) => {
         // Seed basic templates if none exist
         if (templates.length === 0) {
             const defaults = [
-                { name: 'otp_verification', subject: 'Your Verification Code', content: '<h1>Welcome!</h1><p>Your OTP is: <strong>{{otp}}</strong></p>', variables: ['otp', 'username'] },
-                { name: 'password_reset', subject: 'Reset Your Password', content: '<h1>Security Alert</h1><p>Click <a href="{{url}}" clicktracking="off">here</a> to reset.</p><p>Or copy and paste this link: {{url}}</p>', variables: ['url', 'username'] }
+                {
+                    name: 'otp_verification',
+                    subject: '{{otp}} is your {{platform_name}} verification code',
+                    variables: ['otp', 'username', 'platform_name'],
+                    content: `<p class="greeting">Hi {{username}},</p>
+<p class="text">
+    Welcome to <strong>{{platform_name}}</strong>! Please verify your email address to complete your registration. Use the secure 6-digit verification code below:
+</p>
+
+<div class="highlight-card">
+    <p class="highlight-value">{{otp}}</p>
+    <p class="highlight-label">Temporary Access Token</p>
+</div>
+
+<p class="text" style="font-size: 13px; color: #94a3b8; text-align: center; margin-top: -10px;">
+    ⚠️ This code is strictly confidential and expires in <strong>10 minutes</strong>.
+</p>
+
+<p class="text">
+    If you did not initiate this request, someone may have typed your address by mistake. You can safely ignore this alert.
+</p>`
+                },
+                {
+                    name: 'password_reset',
+                    subject: 'Reset Your Password - {{platform_name}}',
+                    variables: ['url', 'username', 'platform_name'],
+                    content: `<p class="greeting">Hello {{username}},</p>
+<p class="text">
+    We received a request to securely reset your password for your <strong>{{platform_name}}</strong> account. Please click the button below to complete the process:
+</p>
+
+<div class="btn-container">
+    <a href="{{url}}" class="btn" target="_blank">Reset My Password</a>
+</div>
+
+<p class="text" style="font-size: 13px; color: #94a3b8; text-align: center;">
+    ⚠️ This secure reset link is valid for <strong>20 minutes</strong>.
+</p>
+
+<p class="text" style="font-size: 13px; color: #64748b; background-color: #f1f5f9; padding: 12px; border-radius: 8px;">
+    If you're having trouble clicking the button, copy and paste the URL below into your browser:<br>
+    <a href="{{url}}" style="color: #4f46e5; word-break: break-all;">{{url}}</a>
+</p>
+
+<p class="text">
+    If you did not request a password change, please ignore this email; your credentials will remain safe and unaltered.
+</p>`
+                },
+                {
+                    name: 'welcome_email',
+                    subject: 'Welcome to {{platform_name}}! 🎉',
+                    variables: ['username', 'platform_name'],
+                    content: `<p class="greeting">Welcome to the Club, {{username}}! 🎉</p>
+<p class="text">
+    Your account is now fully verified and activated! We are thrilled to have you join <strong>{{platform_name}}</strong> — the ultimate social environment for your campus.
+</p>
+
+<p class="text">
+    Here's what you can do right away to get started:
+</p>
+
+<ul class="text" style="padding-left: 20px; line-height: 1.8;">
+    <li>📝 <strong>Share Confessions</strong> anonymously or with your handle.</li>
+    <li>💬 <strong>Engage</strong> on interesting threads with fellow students.</li>
+    <li>💖 <strong>Explore Dating</strong> to match up with matches around your campus.</li>
+    <li>🔒 <strong>Safety First</strong>: Real-time moderation protects your privacy.</li>
+</ul>
+
+<p class="text">
+    If you have any feedback or ideas to share, just send us an email. Our team is always eager to listen!
+</p>`
+                },
+                {
+                    name: 'security_alert',
+                    subject: '🚨 Security Alert for your {{platform_name}} account',
+                    variables: ['username', 'action', 'ipAddress', 'device', 'time', 'platform_name'],
+                    content: `<p class="greeting">Security Alert: Action Required</p>
+<p class="text">
+    Hi {{username}}, we detected some critical activity or a login attempt on your <strong>{{platform_name}}</strong> account. Please review the transaction details below:
+</p>
+
+<table class="info-table">
+    <tr>
+        <td class="label">Trigger Action</td>
+        <td class="value"><strong>{{action}}</strong></td>
+    </tr>
+    <tr>
+        <td class="label">IP Address</td>
+        <td class="value"><code>{{ipAddress}}</code></td>
+    </tr>
+    <tr>
+        <td class="label">Device/OS</td>
+        <td class="value">{{device}}</td>
+    </tr>
+    <tr>
+        <td class="label">Date & Time</td>
+        <td class="value">{{time}}</td>
+    </tr>
+</table>
+
+<p class="text" style="color: #b91c1c; font-weight: 600;">
+    🚩 If this was not you, your account credentials might have been compromised!
+</p>
+
+<p class="text">
+    We highly recommend changing your password immediately and securing your collegiate email. You can trigger a password recovery sequence directly from the login page.
+</p>`
+                },
+                {
+                    name: 'account_approval',
+                    subject: 'Your {{platform_name}} account has been approved',
+                    variables: ['username', 'platform_name'],
+                    content: `<p class="greeting">Dear {{username}},</p>
+<p class="text">
+    Your student identity has been verified successfully. You can now access <strong>{{platform_name}}</strong>.
+</p>
+<p class="text">
+    Feel free to log in and start connecting with your fellow college peers right away!
+</p>`
+                },
+                {
+                    name: 'account_rejection',
+                    subject: 'Student Verification Update - {{platform_name}}',
+                    variables: ['username', 'reason', 'platform_name'],
+                    content: `<p class="greeting">Dear {{username}},</p>
+<p class="text">
+    Thank you for your interest in joining <strong>{{platform_name}}</strong>. We have reviewed the college ID card verification you provided.
+</p>
+<p class="text">
+    Unfortunately, your verification could not be approved at this time for the following reason:
+</p>
+<div style="background-color: #FEE2E2; border-left: 4px solid #EF4444; padding: 15px; margin: 20px 0; border-radius: 4px; color: #991B1B;">
+    <strong>Reason:</strong> {{reason}}
+</div>
+<p class="text">
+    If you believe this was an error, please sign up again with a clearer picture of your student ID card or try verifying using a valid college email address.
+</p>`
+                }
             ];
             await EmailTemplate.insertMany(defaults);
             return res.status(200).json({ templates: await EmailTemplate.find().sort({ name: 1 }) });
@@ -1338,6 +1563,212 @@ const bulkUploadColleges = async (req, res) => {
     }
 };
 
+// GET /api/admin/admins — List all administrators
+const getAdmins = async (req, res) => {
+    try {
+        const admins = await userModel.find({ role: "admin" })
+            .select("-password")
+            .populate("roleRef", "name description permissions");
+        res.status(200).json({ admins });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// POST /api/admin/admins — Create a new administrator account
+const createAdmin = async (req, res) => {
+    try {
+        const { username, email, password, fullName, adminRole, adminPermissions, roleRef } = req.body;
+
+        if (!username || !password || !email) {
+            return res.status(400).json({ message: "Username, email, and password are required" });
+        }
+
+        const exists = await userModel.findOne({ $or: [{ username: username.toLowerCase() }, { email: email.toLowerCase() }] });
+        if (exists) {
+            return res.status(400).json({ message: "Username or email already exists" });
+        }
+
+        const bcrypt = require("bcryptjs");
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const adminData = {
+            username: username.toLowerCase(),
+            email: email.toLowerCase(),
+            password: hashedPassword,
+            fullName: fullName || "",
+            role: "admin",
+            adminRole: adminRole || "admin",
+            adminPermissions: adminPermissions || {
+                userManagement: { view: true, create: false, update: false, delete: false },
+                reports: { view: true, create: false, update: true, delete: false },
+                stories: { view: true, create: false, update: false, delete: false },
+                posts: { view: true, create: false, update: false, delete: false },
+                dating: { view: true, create: false, update: false, delete: false },
+                premium: { view: true, create: false, update: false, delete: false },
+                payments: { view: true, create: false, update: false, delete: false },
+                communities: { view: true, create: false, update: false, delete: false },
+                analytics: { view: true, create: false, update: false, delete: false },
+                verificationRequests: { view: true, create: false, update: false, delete: false }
+            },
+            isVerified: true
+        };
+
+        // Assign custom RBAC role if provided
+        if (roleRef) adminData.roleRef = roleRef;
+
+        const newAdmin = await userModel.create(adminData);
+
+        await logAudit(req.user._id, "CREATE_ADMIN", { targetUser: newAdmin._id, details: `Created admin @${newAdmin.username} with role ${adminRole}${roleRef ? ' (custom role assigned)' : ''}` });
+        
+        res.status(201).json({ message: "Admin account created successfully", admin: newAdmin });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// PUT /api/admin/admins/:id — Update admin role, permissions matrix & custom RBAC role
+const updateAdmin = async (req, res) => {
+    try {
+        const { adminRole, adminPermissions, roleRef } = req.body;
+        const admin = await userModel.findById(req.params.id);
+        if (!admin || admin.role !== "admin") {
+            return res.status(404).json({ message: "Admin account not found" });
+        }
+
+        if (admin._id.toString() === req.user._id.toString() && admin.adminRole === "superadmin" && adminRole !== "superadmin") {
+            return res.status(403).json({ message: "You cannot revoke your own superadmin role" });
+        }
+
+        // Capture previous state for audit delta
+        const previousValues = {
+            adminRole: admin.adminRole,
+            roleRef: admin.roleRef ? admin.roleRef.toString() : null
+        };
+
+        if (adminRole !== undefined) admin.adminRole = adminRole;
+        if (adminPermissions !== undefined) admin.adminPermissions = adminPermissions;
+        
+        // Handle custom RBAC role reference
+        if (roleRef !== undefined) {
+            admin.roleRef = roleRef || null;
+        }
+
+        await admin.save();
+
+        const updatedValues = {
+            adminRole: admin.adminRole,
+            roleRef: admin.roleRef ? admin.roleRef.toString() : null
+        };
+
+        await logAudit(req.user._id, "UPDATE_ADMIN_ROLE", {
+            targetUser: admin._id,
+            details: `Updated role/permissions for admin @${admin.username}`,
+            previousValues,
+            updatedValues
+        });
+
+        res.status(200).json({ message: "Admin privileges updated successfully", admin });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// DELETE /api/admin/admins/:id — Revoke admin status or permanently delete
+const deleteAdmin = async (req, res) => {
+    try {
+        const { action } = req.query;
+        const admin = await userModel.findById(req.params.id);
+        if (!admin || admin.role !== "admin") {
+            return res.status(404).json({ message: "Admin account not found" });
+        }
+
+        if (admin._id.toString() === req.user._id.toString()) {
+            return res.status(403).json({ message: "You cannot delete or revoke your own admin status" });
+        }
+
+        if (action === "delete") {
+            await userModel.findByIdAndDelete(admin._id);
+            await logAudit(req.user._id, "DELETE_ADMIN_ACCOUNT", { details: `Permanently deleted admin account @${admin.username}` });
+            return res.status(200).json({ message: "Admin account permanently deleted" });
+        } else {
+            admin.role = "user";
+            admin.adminRole = "none";
+            admin.adminPermissions = undefined;
+            await admin.save();
+            await logAudit(req.user._id, "REVOKE_ADMIN_ROLE", { targetUser: admin._id, details: `Revoked admin access for @${admin.username}` });
+            return res.status(200).json({ message: "Admin access revoked. User downgraded to regular account." });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// GET /api/admin/security/sessions — Get device login logs & suspicious sessions
+const getSecuritySessions = async (req, res) => {
+    try {
+        const user = await userModel.findById(req.user._id).select("loginHistory");
+        const suspiciousLogins = await userModel.find({ "loginHistory.isSuspicious": true })
+            .select("username fullName email loginHistory avatar")
+            .limit(20);
+
+        const alerts = [];
+        suspiciousLogins.forEach(u => {
+            u.loginHistory.filter(h => h.isSuspicious).forEach(h => {
+                alerts.push({
+                    _id: h._id,
+                    userId: u._id,
+                    username: u.username,
+                    avatar: u.avatar,
+                    fullName: u.fullName,
+                    ip: h.ip,
+                    city: h.city,
+                    country: h.country,
+                    browser: h.browser,
+                    os: h.os,
+                    device: h.device,
+                    timestamp: h.timestamp
+                });
+            });
+        });
+
+        alerts.sort((a, b) => b.timestamp - a.timestamp);
+
+        res.status(200).json({ 
+            mySessions: user.loginHistory, 
+            suspiciousAlerts: alerts.slice(0, 20) 
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// POST /api/admin/security/sessions/revoke — Revoke device login session
+const revokeSecuritySession = async (req, res) => {
+    try {
+        const { userId, sessionId } = req.body;
+        if (!userId || !sessionId) {
+            return res.status(400).json({ message: "User ID and Session ID are required" });
+        }
+
+        const user = await userModel.findById(userId);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        user.loginHistory = user.loginHistory.filter(s => s._id.toString() !== sessionId);
+        await user.save();
+
+        if (global.ioInstance) {
+            global.ioInstance.to(`user:${userId}`).emit("session-revoked", { sessionId });
+        }
+
+        await logAudit(req.user._id, "REVOKE_SESSION", { targetUser: userId, details: `Revoked session ${sessionId} for @${user.username}` });
+
+        res.status(200).json({ message: "Session successfully revoked" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getDashboard, getAllUsers, getUserDetails, toggleBan, changeRole, deleteUser, restoreUser,
     getAllConfessions, toggleHideConfession, deleteAnyConfession,
@@ -1352,5 +1783,6 @@ module.exports = {
     getMailConfig, updateMailConfig,
     exportUsers, bulkDeleteUsers, bulkDeleteConfessions, bulkConfessionsModeration,
     exportReports, bulkReportsModeration, bulkHandleVerifications,
-    getColleges, addCollege, updateCollege, deleteCollege, bulkUploadColleges
+    getColleges, addCollege, updateCollege, deleteCollege, bulkUploadColleges,
+    getAdmins, createAdmin, updateAdmin, deleteAdmin, getSecuritySessions, revokeSecuritySession
 };
