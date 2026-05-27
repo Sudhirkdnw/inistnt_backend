@@ -800,7 +800,7 @@ const uploadSystemAsset = async (req, res) => {
 // GET /api/admin/mail/logs
 const getEmailLogs = async (req, res) => {
     try {
-        const { EmailLog } = require("@social-mini/shared-models");
+        const EmailLog = require("../models/emailLog.model");
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
         const skip = (page - 1) * limit;
