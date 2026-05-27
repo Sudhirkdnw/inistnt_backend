@@ -43,6 +43,7 @@ const {
     deletePlan: deletePremiumPlan,
     grantPremiumManual,
     revokePremiumManual,
+    cancelSubscriptionAdmin,
     getSubscribers: getPremiumSubscribers,
     getPremiumAnalytics
 } = require("../controllers/adminPremium.controller");
@@ -142,6 +143,7 @@ router.put("/premium/plans/:id", requirePermission("premium", "update"), updateP
 router.delete("/premium/plans/:id", requirePermission("premium", "delete"), deletePremiumPlan);
 router.post("/premium/grant", requirePermission("premium", "update"), grantPremiumManual);
 router.post("/premium/revoke", requirePermission("premium", "update"), revokePremiumManual);
+router.post("/premium/cancel-subscription", requirePermission("premium", "update"), cancelSubscriptionAdmin);
 router.get("/premium/subscribers", requirePermission("premium", "view"), getPremiumSubscribers);
 router.get("/premium/analytics", requirePermission("premium", "view"), getPremiumAnalytics);
 

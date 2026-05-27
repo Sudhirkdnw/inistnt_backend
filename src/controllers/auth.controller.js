@@ -76,7 +76,7 @@ async function registerController(req, res) {
         }
 
         const hasIdCard = req.file;
-        
+
         // Unified validation check for test suites
         if (!collegeEmail && !hasIdCard) {
             return res.status(400).json({ message: "College verification is required: Please provide a valid college email or upload a student ID card." });
@@ -122,7 +122,7 @@ async function registerController(req, res) {
 
             const base64 = compressedBuffer.toString("base64");
             idCardImage = `data:image/jpeg;base64,${base64}`;
-            
+
             idCardMetadata = {
                 mimeType: "image/jpeg",
                 size: compressedBuffer.length,
@@ -295,9 +295,9 @@ async function loginController(req, res) {
 
         if (user.isSoftDeleted) {
             const daysLeft = Math.ceil((user.scheduledDeletionAt - Date.now()) / (1000 * 60 * 60 * 24));
-            return res.status(403).json({ 
+            return res.status(403).json({
                 message: `Your account is scheduled for deletion in ${daysLeft} days. Please use the recovery option to restore your account.`,
-                isSoftDeleted: true 
+                isSoftDeleted: true
             });
         }
 
@@ -326,6 +326,9 @@ async function loginController(req, res) {
         }
 
         const metadata = getRequestMetadata(req);
+        if (!user.loginHistory) {
+            user.loginHistory = [];
+        }
         const isSuspicious = checkSuspicious(user.loginHistory, metadata);
 
         if (user.role === 'admin' || user.role === 'superadmin') {
@@ -383,11 +386,11 @@ async function loginController(req, res) {
         user.lastIp = metadata.ip;
         user.lastActive = new Date();
         user.loginHistory.push({ ...metadata, isSuspicious });
-        
+
         if (user.loginHistory.length > 50) {
             user.loginHistory.shift();
         }
-        
+
         await user.save();
 
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
@@ -455,8 +458,8 @@ async function forgotPasswordController(req, res) {
         }
 
         if (!user.isEmailVerified) {
-            return res.status(400).json({ 
-                message: "This email address is not verified. Please verify your email in settings to enable password recovery." 
+            return res.status(400).json({
+                message: "This email address is not verified. Please verify your email in settings to enable password recovery."
             });
         }
 
@@ -475,7 +478,7 @@ async function forgotPasswordController(req, res) {
 
         // Send password reset email asynchronously in the background (non-blocking)
         const { sendPasswordResetEmail } = require("../services/emailService");
-        
+
         sendPasswordResetEmail(user.email, resetUrl, user.username)
             .catch((err) => {
                 console.error(`❌ [forgotPasswordController] Failed to queue password reset email for ${user.email}:`, err.message);
@@ -500,9 +503,9 @@ async function resetPasswordController(req, res) {
         if (!password) return res.status(400).json({ message: "New password is required" });
 
         const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
-        const user = await userModel.findOne({ 
-            resetPasswordToken: hashedToken, 
-            resetPasswordExpire: { $gt: Date.now() } 
+        const user = await userModel.findOne({
+            resetPasswordToken: hashedToken,
+            resetPasswordExpire: { $gt: Date.now() }
         });
 
         if (!user) return res.status(400).json({ message: "Invalid or expired password reset token" });
@@ -601,6 +604,9 @@ async function verifyAdminOtpController(req, res) {
 
         // Setup session metadata
         const metadata = getRequestMetadata(req);
+        if (!user.loginHistory) {
+            user.loginHistory = [];
+        }
         const isSuspicious = checkSuspicious(user.loginHistory, metadata);
         user.lastIp = metadata.ip;
         user.lastActive = new Date();

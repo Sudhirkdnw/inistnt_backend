@@ -41,19 +41,28 @@ class StripeGateway extends PaymentGateway {
         if (plan.billingPeriod === "yearly") interval = "year";
         if (plan.billingPeriod === "weekly") interval = "week";
 
-        // Create product and price dynamically
-        const product = await stripe.products.create({
-            name: plan.name,
-            description: plan.description || undefined,
-            metadata: { planId: plan._id.toString() }
-        });
+        let stripePriceId = plan.stripePriceId;
 
-        const price = await stripe.prices.create({
-            product: product.id,
-            unit_amount: Math.round(plan.price * 100), // Stripe price in cents
-            currency: "inr",
-            recurring: { interval }
-        });
+        if (!stripePriceId) {
+            // Create product and price dynamically on Stripe
+            const product = await stripe.products.create({
+                name: plan.name,
+                description: plan.description || undefined,
+                metadata: { planId: plan._id.toString() }
+            });
+
+            const price = await stripe.prices.create({
+                product: product.id,
+                unit_amount: Math.round(plan.price * 100), // Stripe price in cents
+                currency: "inr",
+                recurring: { interval }
+            });
+
+            plan.stripeProductId = product.id;
+            plan.stripePriceId = price.id;
+            await plan.save();
+            stripePriceId = price.id;
+        }
 
         // 3. Create Stripe Checkout Session
         const successUrl = `${process.env.CLIENT_URL || "http://localhost:3000"}/premium/success?session_id={CHECKOUT_SESSION_ID}`;
@@ -62,7 +71,7 @@ class StripeGateway extends PaymentGateway {
         const session = await stripe.checkout.sessions.create({
             customer: customer.id,
             payment_method_types: ["card"],
-            line_items: [{ price: price.id, quantity: 1 }],
+            line_items: [{ price: stripePriceId, quantity: 1 }],
             mode: "subscription",
             success_url: successUrl,
             cancel_url: cancelUrl,
@@ -128,6 +137,20 @@ class StripeGateway extends PaymentGateway {
                 rawResponse: session
             };
         }
+    }
+
+    async verifyWebhook(rawBody, signature) {
+        const stripe = await getStripe();
+        if (!stripe) {
+            throw new Error("Stripe Gateway is not configured.");
+        }
+        const premiumSettingsModel = require("../../models/premiumSettings.model");
+        const settings = await premiumSettingsModel.findOne();
+        const webhookSecret = (settings && settings.stripeWebhookSecret) || process.env.STRIPE_WEBHOOK_SECRET;
+        if (!webhookSecret) {
+            throw new Error("Stripe webhook secret is missing in database and environment.");
+        }
+        return stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
     }
 }
 

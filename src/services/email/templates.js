@@ -333,10 +333,67 @@ function renderSecurityAlert(alertDetails, username, platformName) {
     return getMasterLayout(`Security Notification - ${platformName}`, content, platformName);
 }
 
+/**
+ * 5. Billing Receipt Template
+ */
+function renderBillingReceipt(invoiceDetails, username, platformName) {
+    const planName = invoiceDetails.planName || "Premium Plan";
+    const amount = invoiceDetails.amount || "0";
+    const gateway = invoiceDetails.gateway || "Stripe";
+    const transactionId = invoiceDetails.transactionId || "N/A";
+    const date = invoiceDetails.date || new Date().toLocaleDateString();
+    const expiryDate = invoiceDetails.expiryDate || "N/A";
+
+    const content = `
+        <p class="greeting">Hi ${username},</p>
+        <p class="text">
+            Thank you for upgrading to <strong>${platformName} Premium</strong>! Your payment has been processed successfully. Below is your billing confirmation receipt:
+        </p>
+        
+        <table class="info-table">
+            <tr>
+                <td class="label">Product</td>
+                <td class="value"><strong>${platformName} Premium - ${planName}</strong></td>
+            </tr>
+            <tr>
+                <td class="label">Amount Paid</td>
+                <td class="value"><strong>₹${amount}</strong></td>
+            </tr>
+            <tr>
+                <td class="label">Payment Gateway</td>
+                <td class="value" style="text-transform: capitalize;">${gateway}</td>
+            </tr>
+            <tr>
+                <td class="label">Transaction ID</td>
+                <td class="value"><code>${transactionId}</code></td>
+            </tr>
+            <tr>
+                <td class="label">Date</td>
+                <td class="value">${date}</td>
+            </tr>
+            <tr>
+                <td class="label">Access Valid Until</td>
+                <td class="value"><strong>${expiryDate}</strong></td>
+            </tr>
+        </table>
+        
+        <div class="highlight-card" style="margin-top: 24px; padding: 16px;">
+            <p style="margin: 0; color: #4f46e5; font-size: 16px; font-weight: 700;">🎉 Premium Benefits Activated!</p>
+            <p style="margin: 8px 0 0 0; color: #64748b; font-size: 13px;">You now have complete access to campus discovery, crush matching, private photo reveal controls, and more.</p>
+        </div>
+
+        <p class="text">
+            If you have any questions about this charge or your subscription, please don't hesitate to reach out to our support team.
+        </p>
+    `;
+    return getMasterLayout(`Billing Receipt - ${platformName} Premium`, content, platformName);
+}
+
 module.exports = {
     renderOtpVerification,
     renderPasswordReset,
     renderWelcomeEmail,
     renderSecurityAlert,
+    renderBillingReceipt,
     getMasterLayout
 };

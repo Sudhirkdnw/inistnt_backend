@@ -51,11 +51,11 @@ const getDashboard = async (req, res) => {
         ]);
 
         const recentUsers = await userModel.find().sort({ createdAt: -1 }).limit(8).select("username fullName avatar createdAt verificationStatus");
-        const recentConfessions = await confessionModel.find().sort({ createdAt: -1 }).limit(5).populate("user", "username avatar");
-        const recentReports = await reportModel.find({ status: "pending" }).sort({ createdAt: -1 }).limit(5).populate("reporter", "username").populate("targetId");
+        const recentConfessions = await confessionModel.find().sort({ createdAt: -1 }).limit(5).select("confessionText category isAnonymous collegeName likes commentCount isHidden createdAt user").populate("user", "username avatar");
+        const recentReports = await reportModel.find({ status: "pending" }).sort({ createdAt: -1 }).limit(5).select("reporter targetType targetId reason description status createdAt").populate("reporter", "username").populate("targetId");
 
         res.status(200).json({
-            stats: { 
+            stats: {
                 totalUsers, activeUsers24h, onlineUsers: onlineUsersCount,
                 totalConfessions, confessions24h,
                 totalReports, pendingReports,
@@ -81,10 +81,10 @@ const getAllUsers = async (req, res) => {
         const status = req.query.status || "all"; // all, active, banned, soft_deleted
 
         let filter = {};
-        
+
         if (search) {
             filter.$or = [
-                { username: { $regex: search, $options: "i" } }, 
+                { username: { $regex: search, $options: "i" } },
                 { fullName: { $regex: search, $options: "i" } }
             ];
         }
@@ -98,7 +98,11 @@ const getAllUsers = async (req, res) => {
             filter.isSoftDeleted = true;
         }
 
-        const users = await userModel.find(filter).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limit);
+        const users = await userModel.find(filter)
+            .select("username fullName avatar email role isBanned isSoftDeleted isPremium premiumExpireAt createdAt loginHistory.isSuspicious")
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
         const total = await userModel.countDocuments(filter);
 
         res.status(200).json({ users, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
@@ -114,7 +118,7 @@ const getUserDetails = async (req, res) => {
         if (!user) return res.status(404).json({ message: "User not found" });
 
         const confessions = await confessionModel.find({ user: user._id }).sort({ createdAt: -1 });
-        const reportsAgainst = await reportModel.find({ reportedUser: user._id });
+        const reportsAgainst = await reportModel.find({ targetId: user._id, targetType: "user" });
         const suspiciousLogins = user.loginHistory.filter(h => h.isSuspicious).length;
 
         res.status(200).json({ user, confessions, reportsAgainst, security: { suspiciousLogins } });
@@ -235,9 +239,28 @@ const getAllConfessions = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
         const skip = (page - 1) * limit;
+        const filter = req.query.filter || 'all';
 
-        const confessions = await confessionModel.find().populate("user", "username avatar").sort({ createdAt: -1 }).skip(skip).limit(limit);
-        const total = await confessionModel.countDocuments();
+        let query = {};
+        if (filter === 'hidden') {
+            query.isHidden = true;
+        } else if (filter === 'reported') {
+            query.reports = { $exists: true, $not: { $size: 0 } };
+        } else if (filter === 'trending') {
+            query.$or = [
+                { commentCount: { $gte: 5 } },
+                { "likes.4": { $exists: true } }
+            ];
+        }
+
+        const confessions = await confessionModel.find(query)
+            .select("confessionText category isAnonymous collegeName likes commentCount isHidden createdAt user")
+            .populate("user", "username avatar")
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        const total = await confessionModel.countDocuments(query);
 
         res.status(200).json({ confessions, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
     } catch (error) {
@@ -279,7 +302,7 @@ const getReports = async (req, res) => {
         const limit = parseInt(req.query.limit) || 20;
         const skip = (page - 1) * limit;
         const status = req.query.status || "pending";
-        
+
         const filter = status === 'all' ? {} : { status };
 
         const reports = await reportModel.find(filter)
@@ -291,9 +314,9 @@ const getReports = async (req, res) => {
 
         const total = await reportModel.countDocuments(filter);
 
-        res.status(200).json({ 
-            reports, 
-            pagination: { page, limit, total, pages: Math.ceil(total / limit) } 
+        res.status(200).json({
+            reports,
+            pagination: { page, limit, total, pages: Math.ceil(total / limit) }
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -306,8 +329,8 @@ const updateReport = async (req, res) => {
         const { status, adminNote } = req.body;
         const report = await reportModel.findByIdAndUpdate(
             req.params.id,
-            { 
-                status, 
+            {
+                status,
                 adminNote,
                 reviewedBy: req.user._id,
                 resolvedAt: status !== 'pending' ? new Date() : null
@@ -396,16 +419,16 @@ const getPendingVerifications = async (req, res) => {
             userModel.countDocuments({ verificationStatus: { $in: ["rejected", "REJECTED"] } }),
             userModel.aggregate([
                 { $match: { reviewedAt: { $ne: null }, createdAt: { $ne: null } } },
-                { 
-                    $project: { 
-                        duration: { $subtract: ["$reviewedAt", "$createdAt"] } 
-                    } 
+                {
+                    $project: {
+                        duration: { $subtract: ["$reviewedAt", "$createdAt"] }
+                    }
                 },
-                { 
-                    $group: { 
-                        _id: null, 
-                        avgDuration: { $avg: "$duration" } 
-                    } 
+                {
+                    $group: {
+                        _id: null,
+                        avgDuration: { $avg: "$duration" }
+                    }
                 }
             ])
         ]);
@@ -422,8 +445,8 @@ const getPendingVerifications = async (req, res) => {
             }
         }
 
-        res.status(200).json({ 
-            users, 
+        res.status(200).json({
+            users,
             total,
             pagination: {
                 page: parseInt(page),
@@ -566,9 +589,9 @@ const handleVerification = async (req, res) => {
 
         res.status(200).json({
             message: action === "approve" ? "User student verification approved successfully" : "User verification rejected",
-            user: { 
-                _id: user._id, 
-                username: user.username, 
+            user: {
+                _id: user._id,
+                username: user.username,
                 verificationStatus: user.verificationStatus,
                 isVerified: user.isVerified
             }
@@ -597,7 +620,7 @@ const handleDatingProfile = async (req, res) => {
     try {
         const { action } = req.body; // action: "delete" | "warn"
         const datingModel = require("../models/dating.model");
-        
+
         if (action === "delete") {
             await datingModel.findByIdAndDelete(req.params.id);
             return res.status(200).json({ message: "Dating profile deleted" });
@@ -691,9 +714,9 @@ const updateSetting = async (req, res) => {
         const setting = await settingsModel.findOneAndUpdate(
             { key },
             { value: finalValue },
-            { 
-                returnDocument: 'after', 
-                upsert: true 
+            {
+                returnDocument: 'after',
+                upsert: true
             }
         );
 
@@ -740,14 +763,14 @@ const resetAllPasswords = async (req, res) => {
 
         // In production, we'd typically mark users for "force reset" on next login
         // But here we'll invalidate all passwords for demonstration of danger action
-        await userModel.updateMany({}, { 
+        await userModel.updateMany({}, {
             password: hashedPassword,
             "loginHistory.0.suspicious": true // mark for review
         });
 
         await logAudit(req.user._id, "reset_all_passwords", "user", null, { adminNote: "System-wide reset triggered" });
 
-        res.status(200).json({ 
+        res.status(200).json({
             message: "All user passwords have been reset. IMPORTANT: Users will need to use temporary recovery or admins must provide manual resets.",
             tempPassword // For demo purposes, we return one but in real app we'd email them
         });
@@ -760,13 +783,13 @@ const resetAllPasswords = async (req, res) => {
 const broadcastAnnouncement = async (req, res) => {
     try {
         const { title, message, type } = req.body; // type: info, warning, error
-        
+
         const io = req.app.get("io");
         if (io) {
-            io.emit("platform-announcement", { 
-                title, 
-                message, 
-                type, 
+            io.emit("platform-announcement", {
+                title,
+                message,
+                type,
                 sender: req.user.username,
                 timestamp: new Date()
             });
@@ -784,7 +807,7 @@ const broadcastAnnouncement = async (req, res) => {
 const uploadSystemAsset = async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ message: "No file provided" });
-        
+
         const { uploadImage } = require("../utils/cloudinary");
         const photoUrl = await uploadImage(req.file.buffer, {
             folder: 'system/branding',
@@ -812,7 +835,7 @@ const getEmailLogs = async (req, res) => {
 
         const total = await EmailLog.countDocuments();
 
-        res.status(200).json({ 
+        res.status(200).json({
             logs,
             pagination: { page, limit, total, pages: Math.ceil(total / limit) }
         });
@@ -826,7 +849,7 @@ const getEmailTemplates = async (req, res) => {
     try {
         const EmailTemplate = require("../models/emailTemplate.model");
         const templates = await EmailTemplate.find().sort({ name: 1 });
-        
+
         // Seed basic templates if none exist
         if (templates.length === 0) {
             const defaults = [
@@ -999,7 +1022,7 @@ const updateEmailTemplate = async (req, res) => {
 const getMailConfig = async (req, res) => {
     try {
         const { getSetting } = require("../utils/settings");
-        
+
         const config = {
             SMTP_HOST: getSetting('mail_host', 'smtp.gmail.com'),
             SMTP_PORT: String(getSetting('mail_port', 587)),
@@ -1010,12 +1033,12 @@ const getMailConfig = async (req, res) => {
             EMAIL_FROM_NAME: getSetting('mail_from_name', 'Inistnt'),
             RESEND_API_KEY: getSetting('resend_api_key', '') || process.env.RESEND_API_KEY || ''
         };
-        
+
         // Mask password before sending to client
         if (config.EMAIL_PASS) {
             config.EMAIL_PASS = "********";
         }
-        
+
         res.status(200).json({ config });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -1029,9 +1052,9 @@ const updateMailConfig = async (req, res) => {
         const { refreshTransporter } = require("../utils/mailer");
         const Setting = require("../models/settings.model");
         const { updateSettingInCache } = require("../utils/settings");
-        
+
         const newConfig = req.body;
-        
+
         // Filter out masked password if not changed
         if (newConfig.EMAIL_PASS === "********") {
             delete newConfig.EMAIL_PASS;
@@ -1057,7 +1080,7 @@ const updateMailConfig = async (req, res) => {
                 } else if (envKey === 'SMTP_SECURE') {
                     value = value === 'true' ? 'ssl' : 'tls';
                 }
-                
+
                 await Setting.findOneAndUpdate(
                     { key: dbKey },
                     { $set: { value: value } },
@@ -1081,8 +1104,8 @@ const updateMailConfig = async (req, res) => {
         updateMailEnv(newConfig);
         refreshTransporter();
 
-        await logAudit(req.user._id, "update_mail_config", { 
-            details: `Updated fields: ${Object.keys(newConfig).filter(k => k !== 'EMAIL_PASS').join(', ')}` 
+        await logAudit(req.user._id, "update_mail_config", {
+            details: `Updated fields: ${Object.keys(newConfig).filter(k => k !== 'EMAIL_PASS').join(', ')}`
         });
 
         res.status(200).json({ message: "Mail configuration updated and reloaded" });
@@ -1097,7 +1120,7 @@ const sendTestEmail = async (req, res) => {
         const { to } = req.body;
         const { sendEmail } = require("../utils/mailer");
         const { getSetting } = require("../utils/settings");
-        
+
         await sendEmail(
             to || req.user.email,
             "System Mail Delivery Test",
@@ -1153,7 +1176,7 @@ const exportUsers = async (req, res) => {
 
             res.setHeader("Content-Type", format === "excel" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv");
             res.setHeader("Content-Disposition", `attachment; filename=users_export_${Date.now()}.${format === "excel" ? "xlsx" : "csv"}`);
-            
+
             InfrastructureLogger.security("SUCCESS", `Admin "${req.user.username}" successfully completed users export`, {
                 adminId: req.user._id,
                 count: users.length
@@ -1163,7 +1186,7 @@ const exportUsers = async (req, res) => {
 
         res.setHeader("Content-Type", "application/json");
         res.setHeader("Content-Disposition", `attachment; filename=users_export_${Date.now()}.json`);
-        
+
         InfrastructureLogger.security("SUCCESS", `Admin "${req.user.username}" successfully completed users export`, {
             adminId: req.user._id,
             count: users.length
@@ -1191,16 +1214,16 @@ const bulkDeleteUsers = async (req, res) => {
 
         const result = await userModel.updateMany(
             { _id: { $in: filteredIds } },
-            { 
+            {
                 isSoftDeleted: true,
                 deletedAt: new Date(),
                 deletedByUser: false
             }
         );
 
-        await logAudit(req.user._id, "BULK_DELETE_USERS", { 
-            targetUserIds: filteredIds, 
-            count: result.modifiedCount 
+        await logAudit(req.user._id, "BULK_DELETE_USERS", {
+            targetUserIds: filteredIds,
+            count: result.modifiedCount
         });
 
         InfrastructureLogger.security("SUCCESS", `Admin "${req.user.username}" bulk deleted ${result.modifiedCount} users`, {
@@ -1208,9 +1231,9 @@ const bulkDeleteUsers = async (req, res) => {
             deletedCount: result.modifiedCount
         });
 
-        res.status(200).json({ 
-            message: `Successfully deleted ${result.modifiedCount} users`, 
-            deletedCount: result.modifiedCount 
+        res.status(200).json({
+            message: `Successfully deleted ${result.modifiedCount} users`,
+            deletedCount: result.modifiedCount
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -1232,9 +1255,9 @@ const bulkDeleteConfessions = async (req, res) => {
 
         const result = await confessionModel.deleteMany({ _id: { $in: confessionIds } });
 
-        await logAudit(req.user._id, "BULK_DELETE_CONFESSIONS", { 
-            targetConfessionIds: confessionIds, 
-            count: result.deletedCount 
+        await logAudit(req.user._id, "BULK_DELETE_CONFESSIONS", {
+            targetConfessionIds: confessionIds,
+            count: result.deletedCount
         });
 
         InfrastructureLogger.security("SUCCESS", `Admin "${req.user.username}" bulk deleted ${result.deletedCount} confessions`, {
@@ -1242,9 +1265,9 @@ const bulkDeleteConfessions = async (req, res) => {
             deletedCount: result.deletedCount
         });
 
-        res.status(200).json({ 
-            message: `Successfully deleted ${result.deletedCount} confessions`, 
-            deletedCount: result.deletedCount 
+        res.status(200).json({
+            message: `Successfully deleted ${result.deletedCount} confessions`,
+            deletedCount: result.deletedCount
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -1269,9 +1292,9 @@ const bulkConfessionsModeration = async (req, res) => {
             { isHidden }
         );
 
-        await logAudit(req.user._id, `BULK_MODERATE_CONFESSIONS_${action.toUpperCase()}`, { 
-            targetConfessionIds: confessionIds, 
-            count: result.modifiedCount 
+        await logAudit(req.user._id, `BULK_MODERATE_CONFESSIONS_${action.toUpperCase()}`, {
+            targetConfessionIds: confessionIds,
+            count: result.modifiedCount
         });
 
         InfrastructureLogger.security("SUCCESS", `Admin "${req.user.username}" bulk-moderated ${result.modifiedCount} confessions to ${action}`, {
@@ -1280,9 +1303,9 @@ const bulkConfessionsModeration = async (req, res) => {
             action
         });
 
-        res.status(200).json({ 
-            message: `Successfully modified ${result.modifiedCount} confessions to ${action}`, 
-            modifiedCount: result.modifiedCount 
+        res.status(200).json({
+            message: `Successfully modified ${result.modifiedCount} confessions to ${action}`,
+            modifiedCount: result.modifiedCount
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -1329,7 +1352,7 @@ const exportReports = async (req, res) => {
 
             res.setHeader("Content-Type", format === "excel" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv");
             res.setHeader("Content-Disposition", `attachment; filename=reports_export_${Date.now()}.${format === "excel" ? "xlsx" : "csv"}`);
-            
+
             InfrastructureLogger.security("SUCCESS", `Admin "${req.user.username}" successfully completed reports export`, {
                 adminId: req.user._id,
                 count: reports.length
@@ -1339,7 +1362,7 @@ const exportReports = async (req, res) => {
 
         res.setHeader("Content-Type", "application/json");
         res.setHeader("Content-Disposition", `attachment; filename=reports_export_${Date.now()}.json`);
-        
+
         InfrastructureLogger.security("SUCCESS", `Admin "${req.user.username}" successfully completed reports export`, {
             adminId: req.user._id,
             count: reports.length
@@ -1368,9 +1391,9 @@ const bulkReportsModeration = async (req, res) => {
             { status }
         );
 
-        await logAudit(req.user._id, `BULK_MODERATE_REPORTS_${action.toUpperCase()}`, { 
-            targetReportIds: reportIds, 
-            count: result.modifiedCount 
+        await logAudit(req.user._id, `BULK_MODERATE_REPORTS_${action.toUpperCase()}`, {
+            targetReportIds: reportIds,
+            count: result.modifiedCount
         });
 
         InfrastructureLogger.security("SUCCESS", `Admin "${req.user.username}" bulk-moderated ${result.modifiedCount} reports to ${status}`, {
@@ -1379,9 +1402,9 @@ const bulkReportsModeration = async (req, res) => {
             action
         });
 
-        res.status(200).json({ 
-            message: `Successfully updated ${result.modifiedCount} reports to ${status}`, 
-            modifiedCount: result.modifiedCount 
+        res.status(200).json({
+            message: `Successfully updated ${result.modifiedCount} reports to ${status}`,
+            modifiedCount: result.modifiedCount
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -1431,9 +1454,9 @@ const bulkHandleVerifications = async (req, res) => {
             }
         }
 
-        await logAudit(req.user._id, `BULK_VERIFICATIONS_${action.toUpperCase()}`, { 
-            targetUserIds: userIds, 
-            count: successCount 
+        await logAudit(req.user._id, `BULK_VERIFICATIONS_${action.toUpperCase()}`, {
+            targetUserIds: userIds,
+            count: successCount
         });
 
         InfrastructureLogger.security("SUCCESS", `Admin "${req.user.username}" bulk ${action}d ${successCount} verifications`, {
@@ -1441,9 +1464,9 @@ const bulkHandleVerifications = async (req, res) => {
             count: successCount
         });
 
-        res.status(200).json({ 
-            message: `Successfully processed ${successCount} verifications`, 
-            processedCount: successCount 
+        res.status(200).json({
+            message: `Successfully processed ${successCount} verifications`,
+            processedCount: successCount
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -1470,9 +1493,9 @@ const getColleges = async (req, res) => {
         const colleges = await College.find(filter).sort({ name: 1 }).skip(skip).limit(limit).lean();
         const total = await College.countDocuments(filter);
 
-        res.status(200).json({ 
-            colleges, 
-            pagination: { page, limit, total, pages: Math.ceil(total / limit) } 
+        res.status(200).json({
+            colleges,
+            pagination: { page, limit, total, pages: Math.ceil(total / limit) }
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -1483,7 +1506,7 @@ const addCollege = async (req, res) => {
     try {
         const College = require("../models/college.model");
         const { name, aliases, city, state } = req.body;
-        
+
         if (!name) return res.status(400).json({ message: "College name is required" });
 
         const college = await College.create({
@@ -1493,7 +1516,7 @@ const addCollege = async (req, res) => {
             state: state || "",
             addedByAdmin: true
         });
-        
+
         await logAudit(req.user._id, "ADD_COLLEGE", { collegeId: college._id, name });
         res.status(201).json({ message: "College added", college });
     } catch (error) {
@@ -1507,15 +1530,15 @@ const updateCollege = async (req, res) => {
         const College = require("../models/college.model");
         const { id } = req.params;
         const { isActive, aliases } = req.body;
-        
+
         const college = await College.findByIdAndUpdate(
-            id, 
-            { $set: { isActive, aliases } }, 
+            id,
+            { $set: { isActive, aliases } },
             { new: true }
         );
-        
+
         if (!college) return res.status(404).json({ message: "College not found" });
-        
+
         await logAudit(req.user._id, "UPDATE_COLLEGE", { collegeId: college._id });
         res.status(200).json({ message: "College updated", college });
     } catch (error) {
@@ -1527,9 +1550,9 @@ const deleteCollege = async (req, res) => {
     try {
         const College = require("../models/college.model");
         const { id } = req.params;
-        
+
         await College.findByIdAndDelete(id);
-        
+
         await logAudit(req.user._id, "DELETE_COLLEGE", { collegeId: id });
         res.status(200).json({ message: "College deleted" });
     } catch (error) {
@@ -1544,16 +1567,16 @@ const bulkUploadColleges = async (req, res) => {
         }
 
         const csvString = req.file.buffer.toString('utf-8');
-        
+
         // Simple CSV parser supporting quotes
         const parseCSV = (str) => {
             const arr = [];
             let quote = false;
             for (let row = 0, col = 0, c = 0; c < str.length; c++) {
-                let cc = str[c], nc = str[c+1];
+                let cc = str[c], nc = str[c + 1];
                 arr[row] = arr[row] || [];
                 arr[row][col] = arr[row][col] || '';
-                
+
                 if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; }
                 if (cc === '"') { quote = !quote; continue; }
                 if (cc === ',' && !quote) { ++col; continue; }
@@ -1566,7 +1589,7 @@ const bulkUploadColleges = async (req, res) => {
         };
 
         const rows = parseCSV(csvString).filter(row => row.length > 0 && row.some(cell => cell.trim()));
-        
+
         if (rows.length < 2) {
             return res.status(400).json({ message: "CSV file is empty or missing headers" });
         }
@@ -1673,7 +1696,7 @@ const createAdmin = async (req, res) => {
         const newAdmin = await userModel.create(adminData);
 
         await logAudit(req.user._id, "CREATE_ADMIN", { targetUser: newAdmin._id, details: `Created admin @${newAdmin.username} with role ${adminRole}${roleRef ? ' (custom role assigned)' : ''}` });
-        
+
         res.status(201).json({ message: "Admin account created successfully", admin: newAdmin });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -1701,7 +1724,7 @@ const updateAdmin = async (req, res) => {
 
         if (adminRole !== undefined) admin.adminRole = adminRole;
         if (adminPermissions !== undefined) admin.adminPermissions = adminPermissions;
-        
+
         // Handle custom RBAC role reference
         if (roleRef !== undefined) {
             admin.roleRef = roleRef || null;
@@ -1787,9 +1810,9 @@ const getSecuritySessions = async (req, res) => {
 
         alerts.sort((a, b) => b.timestamp - a.timestamp);
 
-        res.status(200).json({ 
-            mySessions: user.loginHistory, 
-            suspiciousAlerts: alerts.slice(0, 20) 
+        res.status(200).json({
+            mySessions: user.loginHistory,
+            suspiciousAlerts: alerts.slice(0, 20)
         });
     } catch (error) {
         res.status(500).json({ message: error.message });

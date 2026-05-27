@@ -72,6 +72,7 @@ auditLogSchema.pre("findOneAndRemove", blockDelete);
 auditLogSchema.index({ admin: 1, createdAt: -1 });
 auditLogSchema.index({ targetUser: 1, createdAt: -1 });
 auditLogSchema.index({ action: 1, createdAt: -1 });
+auditLogSchema.index({ createdAt: -1 });
 
 const auditLogModel = mongoose.model("auditLog", auditLogSchema);
 

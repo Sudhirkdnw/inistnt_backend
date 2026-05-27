@@ -33,6 +33,18 @@ const subscriptionPlanSchema = new mongoose.Schema({
         default: 0,
         min: 0
     },
+    stripeProductId: {
+        type: String,
+        default: ""
+    },
+    stripePriceId: {
+        type: String,
+        default: ""
+    },
+    razorpayPlanId: {
+        type: String,
+        default: ""
+    },
     isActive: {
         type: Boolean,
         default: true

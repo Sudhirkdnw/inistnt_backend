@@ -407,6 +407,41 @@ async function sendPasswordResetEmail(email, resetUrl, username = "") {
     });
 }
 
+/**
+ * Public API 8: sendBillingEmail(email, username, invoiceDetails)
+ * Dispatches a premium billing confirmation/receipt email.
+ */
+async function sendBillingEmail(email, username = "", invoiceDetails = {}) {
+    const platformName = getSetting("platform_name", "Inistnt");
+    const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
+
+    const dbTemplate = await renderDbTemplate("billing_receipt", {
+        username: cleanUsername,
+        planName: invoiceDetails.planName || "Premium Plan",
+        amount: invoiceDetails.amount || "0",
+        gateway: invoiceDetails.gateway || "stripe",
+        transactionId: invoiceDetails.transactionId || "N/A",
+        date: invoiceDetails.date || new Date().toLocaleDateString(),
+        expiryDate: invoiceDetails.expiryDate || "N/A"
+    });
+
+    let subject, htmlBody;
+    if (dbTemplate) {
+        subject = dbTemplate.subject;
+        htmlBody = dbTemplate.htmlBody;
+    } else {
+        subject = `Billing Receipt: Your ${platformName} Premium subscription is active! 🎉`;
+        htmlBody = templatesModule.renderBillingReceipt(invoiceDetails, cleanUsername, platformName);
+    }
+
+    return sendEmailAsync({
+        to: email,
+        subject,
+        htmlBody,
+        templateName: "billing_receipt"
+    });
+}
+
 module.exports = {
     initEmailSystem,
     shutdownEmailSystem,
@@ -417,6 +452,6 @@ module.exports = {
     sendSecurityAlert,
     sendApprovalEmail,
     sendRejectionEmail,
-    sendPasswordResetEmail
+    sendPasswordResetEmail,
+    sendBillingEmail
 };
-

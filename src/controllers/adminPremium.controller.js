@@ -36,6 +36,7 @@ async function updateSettings(req, res) {
     try {
         const { 
             isPremiumRequired, 
+            showMockGateway,
             activeGateway, 
             stripePublicKey, 
             stripeSecretKey, 
@@ -50,6 +51,7 @@ async function updateSettings(req, res) {
         }
 
         if (isPremiumRequired !== undefined) settings.isPremiumRequired = isPremiumRequired;
+        if (showMockGateway !== undefined) settings.showMockGateway = showMockGateway;
         if (activeGateway !== undefined) settings.activeGateway = activeGateway;
         if (stripePublicKey !== undefined) settings.stripePublicKey = stripePublicKey;
         if (razorpayKeyId !== undefined) settings.razorpayKeyId = razorpayKeyId;
@@ -337,6 +339,62 @@ async function getPremiumAnalytics(req, res) {
     }
 }
 
+// POST /api/admin/premium/cancel-subscription — Admin cancels a user's active gateway subscription and revokes access immediately
+async function cancelSubscriptionAdmin(req, res) {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ message: "User ID is required" });
+        }
+
+        const user = await userModel.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Find active subscription
+        const subscription = await subscriptionModel.findOne({ 
+            user: userId, 
+            status: "active",
+            endDate: { $gt: new Date() }
+        });
+
+        if (!subscription) {
+            return res.status(404).json({ message: "No active subscription found to cancel for this user" });
+        }
+
+        // 1. Cancel on the payment gateway if applicable
+        if (subscription.gatewaySubscriptionId && subscription.paymentGateway !== "mock" && subscription.paymentGateway !== "admin") {
+            try {
+                const gatewayFactory = require("../services/payment/gatewayFactory");
+                const gateway = gatewayFactory.getGateway(subscription.paymentGateway);
+                await gateway.cancelSubscription(subscription.gatewaySubscriptionId);
+            } catch (gatewayErr) {
+                console.error("Admin Gateway cancellation error:", gatewayErr.message);
+            }
+        }
+
+        // 2. Immediately expire the subscription in our database
+        subscription.status = "expired";
+        subscription.endDate = new Date();
+        await subscription.save();
+
+        // 3. Immediately revoke user premium status
+        user.isPremium = false;
+        user.premiumExpireAt = null;
+        await user.save();
+
+        res.status(200).json({
+            message: `Subscription for user @${user.username} cancelled on gateway and premium access revoked immediately.`,
+            subscription,
+            user
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
+
 module.exports = {
     getSettings,
     updateSettings,
@@ -345,6 +403,7 @@ module.exports = {
     deletePlan,
     grantPremiumManual,
     revokePremiumManual,
+    cancelSubscriptionAdmin,
     getSubscribers,
     getPremiumAnalytics
 };

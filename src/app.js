@@ -46,6 +46,18 @@ app.use(cors({
     origin: (origin, callback) => {
         if (!origin) return callback(null, true);
 
+        // Always allow localhost and local network private IPs in development
+        if (process.env.NODE_ENV !== 'production') {
+            const isLocal = origin.startsWith('http://localhost') || 
+                            origin.startsWith('http://127.0.0.1') || 
+                            origin.startsWith('http://192.168.') || 
+                            origin.startsWith('http://10.') || 
+                            origin.startsWith('http://172.');
+            if (isLocal) {
+                return callback(null, true);
+            }
+        }
+
         // Check if origin matches allowed origins or is a Vercel preview (optional)
         const isAllowed = ALLOWED_ORIGINS.some(allowed => 
             origin === allowed || 
@@ -68,7 +80,12 @@ app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false 
 // Gzip compress all responses — saves ~70% bandwidth
 app.use(compression({ level: 6, threshold: 1024 }));
 
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ 
+    limit: "10mb",
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 

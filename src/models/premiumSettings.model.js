@@ -5,6 +5,10 @@ const premiumSettingsSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    showMockGateway: {
+        type: Boolean,
+        default: true
+    },
     activeGateway: {
         type: String,
         enum: ["mock", "stripe", "razorpay"],
