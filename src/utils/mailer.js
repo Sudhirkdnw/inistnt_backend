@@ -3,10 +3,10 @@ const { getSetting } = require("./settings");
 
 /**
  * Legacy wrapper for sending plain/HTML email.
- * Redirects to the new Resend emailService.
+ * Redirects to the new background email queue.
  */
 async function sendEmail(to, subject, text, html = null, templateName = null) {
-    console.log(`📨 [Legacy Mailer Utility] Forwarding request to Resend email service for: ${to}`);
+    console.log(`📨 [Legacy Mailer Utility] Forwarding request to background Email Queue for: ${to}`);
     // Prioritize HTML, fallback to text if HTML not provided
     const resolvedHtml = html || (text ? text.replace(/\n/g, '<br>') : "");
     return sendGeneralEmail(to, subject, resolvedHtml, text || "", templateName || "legacy");
@@ -53,7 +53,7 @@ async function sendEmailWithTemplate(to, templateName, variables = {}) {
  * Dummy function for backward compatibility with the admin reload page
  */
 function refreshTransporter() {
-    console.log("🔌 [Legacy Mailer Utility] refreshTransporter invoked: SMTP is discontinued, using Resend API Client.");
+    console.log("🔌 [Legacy Mailer Utility] refreshTransporter invoked: Mail config updated. standalone EmailWorker will pick up changes.");
     return null;
 }
 

@@ -474,19 +474,9 @@ async function forgotPasswordController(req, res) {
         const resetUrl = `${req.headers.origin}/reset-password/${resetToken}`;
 
         // Send password reset email asynchronously in the background (non-blocking)
-        const { sendGeneralEmail } = require("../services/emailService");
+        const { sendPasswordResetEmail } = require("../services/emailService");
         
-        const resetHtml = `
-            <h2>Password Reset Request</h2>
-            <p>Hi ${user.username},</p>
-            <p>You requested a password reset for your account. Please click the button below to securely reset your password. This link is valid for 20 minutes.</p>
-            <div class="btn-container">
-                <a href="${resetUrl}" class="btn">Reset Password</a>
-            </div>
-            <p>If you did not request a password reset, you can safely ignore this email.</p>
-        `;
-        
-        sendGeneralEmail(user.email, "Reset Your Password", resetHtml, `Click here to reset your password: ${resetUrl}`, "password_reset")
+        sendPasswordResetEmail(user.email, resetUrl, user.username)
             .catch((err) => {
                 console.error(`❌ [forgotPasswordController] Failed to queue password reset email for ${user.email}:`, err.message);
             });

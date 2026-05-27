@@ -33,6 +33,5 @@ const collegeSchema = new mongoose.Schema({
 
 // Optimize search by name and aliases
 collegeSchema.index({ name: 'text', aliases: 'text' });
-collegeSchema.index({ name: 1 });
 
 module.exports = mongoose.model('college', collegeSchema);

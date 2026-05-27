@@ -376,6 +376,37 @@ async function sendRejectionEmail(email, username = "", reason = "") {
     });
 }
 
+/**
+ * Public API 7: sendPasswordResetEmail(email, resetUrl, username)
+ * Dispatches a password reset email.
+ */
+async function sendPasswordResetEmail(email, resetUrl, username = "") {
+    const platformName = getSetting("platform_name", "Inistnt");
+    const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
+
+    const dbTemplate = await renderDbTemplate("password_reset", {
+        url: resetUrl,
+        username: cleanUsername
+    });
+
+    let subject, htmlBody;
+    if (dbTemplate) {
+        subject = dbTemplate.subject;
+        htmlBody = dbTemplate.htmlBody;
+    } else {
+        subject = `Reset Your Password - ${platformName}`;
+        htmlBody = templatesModule.renderPasswordReset(resetUrl, cleanUsername, platformName);
+    }
+
+    return sendEmailAsync({
+        to: email,
+        subject,
+        htmlBody,
+        textBody: `Click here to reset your password: ${resetUrl}`,
+        templateName: "password_reset"
+    });
+}
+
 module.exports = {
     initEmailSystem,
     shutdownEmailSystem,
@@ -385,5 +416,7 @@ module.exports = {
     sendWelcomeEmail,
     sendSecurityAlert,
     sendApprovalEmail,
-    sendRejectionEmail
+    sendRejectionEmail,
+    sendPasswordResetEmail
 };
+

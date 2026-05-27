@@ -83,6 +83,10 @@ app.use(maintenanceMiddleware);
 const settingsRoutes = require("./routes/settings.routes");
 
 const rateLimiter = require('./middlewares/rateLimiter');
+const setupSwagger = require('./config/swagger');
+
+// Setup Swagger API Docs
+setupSwagger(app);
 
 // API Routes
 app.use("/api/auth", rateLimiter({ windowMs: 15 * 60 * 1000, max: 100, prefix: 'auth' }), authRoutes);

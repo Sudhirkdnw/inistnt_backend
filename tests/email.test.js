@@ -6,7 +6,7 @@ const templatesModule = require("../src/services/email/templates");
 const EmailLogger = require("../src/services/email/logger");
 const retryModule = require("../src/services/email/retryHandler");
 const emailQueue = require("../src/services/email/queue");
-const EmailLog = require("../src/models/emailLog.model");
+const { EmailLog } = require("@social-mini/shared-models");
 
 describe("📧 Enterprise Email System Unit Tests", () => {
     beforeAll(async () => {

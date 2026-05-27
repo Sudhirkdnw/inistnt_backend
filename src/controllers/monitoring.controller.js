@@ -1,5 +1,5 @@
 const InfrastructureLog = require("../models/infrastructureLog.model");
-const EmailLog = require("../models/emailLog.model");
+const { EmailLog } = require("@social-mini/shared-models");
 
 class MonitoringController {
     /**

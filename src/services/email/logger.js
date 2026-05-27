@@ -1,4 +1,4 @@
-const EmailLog = require("../../models/emailLog.model");
+const { EmailLog } = require("@social-mini/shared-models");
 const InfrastructureLogger = require("../../utils/infrastructureLogger");
 
 /**

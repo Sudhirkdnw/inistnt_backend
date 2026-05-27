@@ -800,7 +800,7 @@ const uploadSystemAsset = async (req, res) => {
 // GET /api/admin/mail/logs
 const getEmailLogs = async (req, res) => {
     try {
-        const EmailLog = require("../models/emailLog.model");
+        const { EmailLog } = require("@social-mini/shared-models");
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
         const skip = (page - 1) * limit;
@@ -998,8 +998,18 @@ const updateEmailTemplate = async (req, res) => {
 // GET /api/admin/mail/config
 const getMailConfig = async (req, res) => {
     try {
-        const { readMailEnv } = require("../utils/envEditor");
-        const config = readMailEnv();
+        const { getSetting } = require("../utils/settings");
+        
+        const config = {
+            SMTP_HOST: getSetting('mail_host', 'smtp.gmail.com'),
+            SMTP_PORT: String(getSetting('mail_port', 587)),
+            SMTP_SECURE: getSetting('mail_encryption') === 'ssl' ? 'true' : 'false',
+            EMAIL_USER: getSetting('mail_username', ''),
+            EMAIL_PASS: getSetting('mail_password', ''),
+            EMAIL_FROM: getSetting('mail_from_address', ''),
+            EMAIL_FROM_NAME: getSetting('mail_from_name', 'Inistnt'),
+            RESEND_API_KEY: getSetting('resend_api_key', '') || process.env.RESEND_API_KEY || ''
+        };
         
         // Mask password before sending to client
         if (config.EMAIL_PASS) {
@@ -1017,6 +1027,8 @@ const updateMailConfig = async (req, res) => {
     try {
         const { updateMailEnv } = require("../utils/envEditor");
         const { refreshTransporter } = require("../utils/mailer");
+        const Setting = require("../models/settings.model");
+        const { updateSettingInCache } = require("../utils/settings");
         
         const newConfig = req.body;
         
@@ -1025,6 +1037,47 @@ const updateMailConfig = async (req, res) => {
             delete newConfig.EMAIL_PASS;
         }
 
+        // Update database settings first for the shared EmailWorker process
+        const dbMapping = {
+            SMTP_HOST: 'mail_host',
+            SMTP_PORT: 'mail_port',
+            EMAIL_USER: 'mail_username',
+            EMAIL_PASS: 'mail_password',
+            EMAIL_FROM: 'mail_from_address',
+            EMAIL_FROM_NAME: 'mail_from_name',
+            SMTP_SECURE: 'mail_encryption',
+            RESEND_API_KEY: 'resend_api_key'
+        };
+
+        for (const [envKey, dbKey] of Object.entries(dbMapping)) {
+            if (newConfig[envKey] !== undefined) {
+                let value = newConfig[envKey];
+                if (envKey === 'SMTP_PORT') {
+                    value = parseInt(value, 10) || 587;
+                } else if (envKey === 'SMTP_SECURE') {
+                    value = value === 'true' ? 'ssl' : 'tls';
+                }
+                
+                await Setting.findOneAndUpdate(
+                    { key: dbKey },
+                    { $set: { value: value } },
+                    { upsert: true }
+                );
+                updateSettingInCache(dbKey, value);
+            }
+        }
+
+        // Also update mail_reply_to to match EMAIL_FROM
+        if (newConfig.EMAIL_FROM !== undefined) {
+            await Setting.findOneAndUpdate(
+                { key: 'mail_reply_to' },
+                { $set: { value: newConfig.EMAIL_FROM } },
+                { upsert: true }
+            );
+            updateSettingInCache('mail_reply_to', newConfig.EMAIL_FROM);
+        }
+
+        // Write to local .env and refresh memory values
         updateMailEnv(newConfig);
         refreshTransporter();
 
@@ -1047,15 +1100,15 @@ const sendTestEmail = async (req, res) => {
         
         await sendEmail(
             to || req.user.email,
-            "System SMTP Test",
-            `This is a test email from ${getSetting('platform_name')}. If you see this, your SMTP configuration is working correctly!`,
-            `<h1>System Test</h1><p>This is a test email from <strong>${getSetting('platform_name')}</strong>.</p><p>SMTP Config: Working ✅</p>`,
+            "System Mail Delivery Test",
+            `This is a test email from ${getSetting('platform_name')}. If you see this, your email configuration is working correctly!`,
+            `<h1>System Test</h1><p>This is a test email from <strong>${getSetting('platform_name')}</strong>.</p><p>Mail Config: Working ✅</p>`,
             'test_email'
         );
 
         res.status(200).json({ message: `Test email sent to ${to || req.user.email}` });
     } catch (error) {
-        res.status(500).json({ message: `SMTP Failure: ${error.message}` });
+        res.status(500).json({ message: `Mail Delivery Failure: ${error.message}` });
     }
 };
 
