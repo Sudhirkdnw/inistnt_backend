@@ -12,7 +12,10 @@ const maintenanceMiddleware = async (req, res, next) => {
     }
 
     // Try to see if requester is an admin to bypass
-    const token = req.cookies?.token;
+    let token = req.cookies?.token;
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+        token = req.headers.authorization.split(" ")[1];
+    }
     if (token) {
         try {
             const jwt = require('jsonwebtoken');

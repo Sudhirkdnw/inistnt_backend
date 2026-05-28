@@ -2,12 +2,23 @@ const Groq = require("groq-sdk");
 
 let groq = null;
 
+const { getSetting } = require("../utils/settings");
+
+let currentApiKey = null;
+
 function getGroqClient() {
-    if (!groq) {
-        if (!process.env.GROQ_API_KEY) {
-            throw new Error("GROQ_API_KEY is not set in environment variables");
-        }
-        groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    if (!getSetting("ai_service_enabled", true)) {
+        throw new Error("AI services are currently disabled by administrator");
+    }
+
+    const apiKey = getSetting("ai_api_key") || process.env.GROQ_API_KEY;
+    if (!apiKey) {
+        throw new Error("AI API Key is not set in system configurations");
+    }
+
+    if (!groq || currentApiKey !== apiKey) {
+        groq = new Groq({ apiKey });
+        currentApiKey = apiKey;
     }
     return groq;
 }
@@ -25,7 +36,7 @@ async function generateCaption(prompt) {
                 content: `Generate an Instagram caption for: ${prompt}`
             }
         ],
-        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        model: getSetting("ai_model", "meta-llama/llama-4-scout-17b-16e-instruct"),
         max_tokens: 200
     });
 
@@ -45,7 +56,7 @@ async function generateHashtags(prompt) {
                 content: `Generate Instagram hashtags for: ${prompt}`
             }
         ],
-        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        model: getSetting("ai_model", "meta-llama/llama-4-scout-17b-16e-instruct"),
         max_tokens: 200
     });
 
@@ -65,7 +76,7 @@ async function generateBio(prompt) {
                 content: `Generate a social media bio based on these details: ${prompt}`
             }
         ],
-        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        model: getSetting("ai_model", "meta-llama/llama-4-scout-17b-16e-instruct"),
         max_tokens: 150
     });
 
@@ -85,7 +96,7 @@ async function improveBio(currentBio, instructions) {
                 content: `Current Bio: "${currentBio}"\nInstructions: "${instructions}"\nRewrite this bio to be better:`
             }
         ],
-        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        model: getSetting("ai_model", "meta-llama/llama-4-scout-17b-16e-instruct"),
         max_tokens: 150
     });
 
@@ -105,7 +116,7 @@ async function moderateContent(text) {
                 content: `Analyze this content for safety: "${text}"`
             }
         ],
-        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        model: getSetting("ai_model", "meta-llama/llama-4-scout-17b-16e-instruct"),
         response_format: { type: "json_object" },
         max_tokens: 150
     });
