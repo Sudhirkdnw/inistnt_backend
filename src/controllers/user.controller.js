@@ -8,7 +8,7 @@ const Comment = require("../models/comment.model");
 const Conversation = require("../models/conversation.model");
 const Message = require("../models/message.model");
 const { uploadAvatar } = require('../utils/cloudinary');
-const premiumSettingsModel = require("../models/premiumSettings.model");
+const { getPremiumSettingsCached } = require("../utils/premiumSettingsCache");
 const crypto = require("crypto");
 const { sendVerificationEmail } = require("../services/emailService");
 
@@ -44,7 +44,7 @@ async function getUserProfile(req, res) {
         } else {
             // Check if requester has premium if premium requirement is ON
             let isRequesterPremium = true;
-            let settings = await premiumSettingsModel.findOne();
+            let settings = await getPremiumSettingsCached();
             const isPremiumRequired = settings ? settings.isPremiumRequired : true;
 
             if (isPremiumRequired && req.user.role !== "admin") {
@@ -293,13 +293,9 @@ async function toggleFollow(req, res) {
                 // Emit real-time socket notification
                 const io = req.app.get("io");
                 if (io) {
-                    const onlineUsers = io._onlineUsers || new Map();
-                    const targetSocketId = onlineUsers.get(String(targetUserId));
-                    if (targetSocketId) {
-                        const populatedNotif = await notificationModel.findById(notif._id)
-                            .populate("sender", "username fullName avatar");
-                        io.to(targetSocketId).emit("new-notification", populatedNotif);
-                    }
+                    const populatedNotif = await notificationModel.findById(notif._id)
+                        .populate("sender", "username fullName avatar");
+                    io.to(String(targetUserId)).emit("new-notification", populatedNotif);
                 }
 
                 res.status(200).json({ message: "Follow requested", isFollowing: false, isRequested: true });
@@ -320,13 +316,9 @@ async function toggleFollow(req, res) {
             // Emit real-time socket notification to target user
             const io = req.app.get("io");
             if (io) {
-                const onlineUsers = io._onlineUsers || new Map();
-                const targetSocketId = onlineUsers.get(String(targetUserId));
-                if (targetSocketId) {
-                    const populatedNotif = await notificationModel.findById(notif._id)
-                        .populate("sender", "username fullName avatar");
-                    io.to(targetSocketId).emit("new-notification", populatedNotif);
-                }
+                const populatedNotif = await notificationModel.findById(notif._id)
+                    .populate("sender", "username fullName avatar");
+                io.to(String(targetUserId)).emit("new-notification", populatedNotif);
             }
 
             res.status(200).json({ message: "Followed successfully", isFollowing: true, isRequested: false });
@@ -799,13 +791,9 @@ async function acceptFollowRequest(req, res) {
         // Emit socket
         const io = req.app.get("io");
         if (io) {
-            const onlineUsers = io._onlineUsers || new Map();
-            const targetSocketId = onlineUsers.get(String(requesterId));
-            if (targetSocketId) {
-                const populatedNotif = await notificationModel.findById(notif._id)
-                    .populate("sender", "username fullName avatar");
-                io.to(targetSocketId).emit("new-notification", populatedNotif);
-            }
+            const populatedNotif = await notificationModel.findById(notif._id)
+                .populate("sender", "username fullName avatar");
+            io.to(String(requesterId)).emit("new-notification", populatedNotif);
         }
 
         res.status(200).json({ message: "Follow request accepted" });

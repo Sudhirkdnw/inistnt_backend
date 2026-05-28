@@ -3,6 +3,7 @@ const subscriptionPlanModel = require("../models/subscriptionPlan.model");
 const subscriptionModel = require("../models/subscription.model");
 const paymentHistoryModel = require("../models/paymentHistory.model");
 const premiumSettingsModel = require("../models/premiumSettings.model");
+const { invalidatePremiumSettingsCache } = require("../utils/premiumSettingsCache");
 
 // GET /api/admin/premium/settings — Get global premium settings
 async function getSettings(req, res) {
@@ -68,6 +69,7 @@ async function updateSettings(req, res) {
 
         settings.updatedBy = req.user._id;
         await settings.save();
+        invalidatePremiumSettingsCache();
 
         const settingsObj = settings.toObject();
         if (settingsObj.stripeSecretKey) settingsObj.stripeSecretKey = "********";

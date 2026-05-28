@@ -57,8 +57,7 @@ app.set("io", io);
 const InfrastructureLogger = require('./src/utils/infrastructureLogger');
 InfrastructureLogger.setSocketIO(io);
 
-const onlineUsers = new Map();
-io._onlineUsers = onlineUsers;
+
 
 io.on("connection", (socket) => {
     InfrastructureLogger.socket("INFO", `Client connected to Socket.IO. Socket ID: ${socket.id}`);
@@ -108,31 +107,51 @@ io.on("connection", (socket) => {
         }
     });
 
-    socket.on("setup", (userId) => {
+    socket.on("setup", async (userId) => {
         const uid = String(userId);
+        
+        try {
+            // Per-user connection limit: max 3 connections
+            const MAX_CONNECTIONS_PER_USER = parseInt(process.env.MAX_CONNECTIONS_PER_USER) || 3;
+            
+            // Get all sockets in the user's room (across all nodes if using Redis adapter)
+            const socketsInRoom = await io.in(uid).fetchSockets();
+            
+            // If they exceed the limit, disconnect the oldest
+            if (socketsInRoom.length >= MAX_CONNECTIONS_PER_USER) {
+                const countToDisconnect = socketsInRoom.length - MAX_CONNECTIONS_PER_USER + 1;
+                for (let i = 0; i < countToDisconnect; i++) {
+                    const s = socketsInRoom[i];
+                    if (s.id !== socket.id) {
+                        InfrastructureLogger.socket("INFO", `Disconnecting oldest socket ${s.id} for user ${uid} to enforce limit.`);
+                        s.emit("forced_disconnect", { reason: "Too many concurrent connections." });
+                        s.disconnect(true);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Error enforcing socket connection limit:", err);
+        }
+
         socket.join(uid);
-        onlineUsers.set(uid, socket.id);
         socket.userId = uid;
-        // io.emit("online-users", Array.from(onlineUsers.keys()));
     });
 
     socket.on("join-conversation", async (conversationId) => {
         socket.join(conversationId);
         try {
             const conv = await require('./src/models/conversation.model').findById(conversationId).select('isAnonymousChat anonymousIdentities');
-            if (conv && conv.isAnonymousChat) {
-                if (!io._anonymousRooms) io._anonymousRooms = new Map();
-                // Store identities Map as object to easily access by string key
+            if (conv && conv.isAnonymousChat && redisClient) {
                 const identitiesObj = {};
                 if (conv.anonymousIdentities && typeof conv.anonymousIdentities.forEach === 'function') {
                     conv.anonymousIdentities.forEach((val, key) => identitiesObj[key] = val);
                 } else if (conv.anonymousIdentities) {
                     Object.assign(identitiesObj, conv.anonymousIdentities);
                 }
-                io._anonymousRooms.set(conversationId, identitiesObj);
+                await redisClient.set(`anonymous_room:${conversationId}`, JSON.stringify(identitiesObj), 'EX', 3600);
             }
         } catch (e) {
-            console.error("Error caching anonymous identities:", e);
+            console.error("Error caching anonymous identities in Redis:", e);
         }
     });
 
@@ -140,29 +159,40 @@ io.on("connection", (socket) => {
         socket.leave(conversationId);
     });
 
-    socket.on("typing", ({ conversationId, username }) => {
+    socket.on("typing", async ({ conversationId, username }) => {
         let emitUsername = username;
-        if (io._anonymousRooms && io._anonymousRooms.has(conversationId)) {
-            const identities = io._anonymousRooms.get(conversationId);
-            emitUsername = identities[socket.userId] || "Anonymous User";
+        if (redisClient) {
+            const identitiesStr = await redisClient.get(`anonymous_room:${conversationId}`);
+            if (identitiesStr) {
+                try {
+                    const identities = JSON.parse(identitiesStr);
+                    emitUsername = identities[socket.userId] || "Anonymous User";
+                } catch (e) {
+                    emitUsername = "Anonymous User";
+                }
+            }
         }
         socket.to(conversationId).emit("user-typing", { conversationId, username: emitUsername });
     });
 
-    socket.on("stop-typing", ({ conversationId, username }) => {
+    socket.on("stop-typing", async ({ conversationId, username }) => {
         let emitUsername = username;
-        if (io._anonymousRooms && io._anonymousRooms.has(conversationId)) {
-            const identities = io._anonymousRooms.get(conversationId);
-            emitUsername = identities[socket.userId] || "Anonymous User";
+        if (redisClient) {
+            const identitiesStr = await redisClient.get(`anonymous_room:${conversationId}`);
+            if (identitiesStr) {
+                try {
+                    const identities = JSON.parse(identitiesStr);
+                    emitUsername = identities[socket.userId] || "Anonymous User";
+                } catch (e) {
+                    emitUsername = "Anonymous User";
+                }
+            }
         }
         socket.to(conversationId).emit("user-stopped-typing", { conversationId, username: emitUsername });
     });
 
     socket.on("disconnect", () => {
-        if (socket.userId) {
-            onlineUsers.delete(socket.userId);
-            // io.emit("online-users", Array.from(onlineUsers.keys()));
-        }
+        // Rooms are automatically cleaned up by Socket.IO and the Redis adapter
     });
 });
 

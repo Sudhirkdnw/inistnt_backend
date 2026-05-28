@@ -1,9 +1,9 @@
-const premiumSettingsModel = require("../models/premiumSettings.model");
+const { getPremiumSettingsCached } = require("../utils/premiumSettingsCache");
 
 async function checkPremiumAccess(req, res, next) {
     try {
         // 1. Get global settings
-        let settings = await premiumSettingsModel.findOne();
+        let settings = await getPremiumSettingsCached();
         
         // If settings doc doesn't exist, we assume premium requirement is ON
         const isPremiumRequired = settings ? settings.isPremiumRequired : true;

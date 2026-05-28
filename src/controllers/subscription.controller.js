@@ -2,7 +2,7 @@ const userModel = require("../models/user.model");
 const subscriptionPlanModel = require("../models/subscriptionPlan.model");
 const subscriptionModel = require("../models/subscription.model");
 const paymentHistoryModel = require("../models/paymentHistory.model");
-const premiumSettingsModel = require("../models/premiumSettings.model");
+const { getPremiumSettingsCached } = require("../utils/premiumSettingsCache");
 const gatewayFactory = require("../services/payment/gatewayFactory");
 
 // GET /api/subscriptions/plans — Get all active premium plans
@@ -45,7 +45,7 @@ async function purchaseSubscription(req, res) {
 
         let gatewayName = reqGateway;
         if (!gatewayName) {
-            const settings = await premiumSettingsModel.findOne();
+            const settings = await getPremiumSettingsCached();
             gatewayName = settings ? settings.activeGateway : (process.env.PAYMENT_GATEWAY || "mock");
         }
         const gateway = gatewayFactory.getGateway(gatewayName);
@@ -197,7 +197,7 @@ async function getSubscriptionStatus(req, res) {
         const userId = req.user ? req.user._id : null;
 
         // 1. Get global settings
-        let settings = await premiumSettingsModel.findOne();
+        let settings = await getPremiumSettingsCached();
         const isPremiumRequired = settings ? settings.isPremiumRequired : true;
         const showMockGateway = settings ? settings.showMockGateway : true;
 
@@ -244,7 +244,7 @@ async function renderRazorpayCheckout(req, res) {
             return res.status(400).send("Subscription ID is required");
         }
 
-        const settings = await premiumSettingsModel.findOne();
+        const settings = await getPremiumSettingsCached();
         const keyId = (settings && settings.razorpayKeyId) || process.env.RAZORPAY_KEY_ID;
         const keySecret = (settings && settings.razorpayKeySecret) || process.env.RAZORPAY_KEY_SECRET;
         if (!keyId || !keySecret) {

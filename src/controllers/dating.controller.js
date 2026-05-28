@@ -103,63 +103,22 @@ async function getDiscovery(req, res) {
         if (myProfile.interestedIn === "male") genderFilter = { gender: "male" };
         else if (myProfile.interestedIn === "female") genderFilter = { gender: "female" };
 
-        const mongoose = require("mongoose");
-        const swiperObjectId = new mongoose.Types.ObjectId(userId);
-        const matchObjectIds = (myProfile.matches || []).map(id => new mongoose.Types.ObjectId(id));
+                // Fetch all user IDs that current user has already swiped on
+        const swipedRecords = await Swipe.find({ swiper: userId }).select("swipedUser").lean();
+        const swipedUserIds = swipedRecords.map(s => s.swipedUser);
 
-        // Base match: active profiles, matching gender preferences, excluding current user and their matches
-        const matchStage = {
+        // Base match: active profiles, matching gender preferences, excluding current user, matches, and already swiped users
+        const queryFilter = {
             isDatingActive: true,
-            user: { $nin: [swiperObjectId, ...matchObjectIds] },
+            user: { $nin: [userId, ...(myProfile.matches || []), ...swipedUserIds] },
             ...genderFilter
         };
 
-        let candidates = await DatingProfile.aggregate([
-            { $match: matchStage },
-            {
-                $lookup: {
-                    from: "swipes",
-                    let: { candidateUserId: "$user" },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: {
-                                    $and: [
-                                        { $eq: ["$swiper", swiperObjectId] },
-                                        { $eq: ["$swipedUser", "$$candidateUserId"] }
-                                    ]
-                                }
-                            }
-                        }
-                    ],
-                    as: "mySwipe"
-                }
-            },
-            {
-                $match: {
-                    mySwipe: { $size: 0 }
-                }
-            },
-            {
-                $project: {
-                    user: 1,
-                    gender: 1,
-                    interestedIn: 1,
-                    interests: 1,
-                    bio: 1,
-                    age: 1,
-                    photos: 1,
-                    photoOrder: 1
-                }
-            },
-            { $limit: 20 }
-        ]);
-
-        // Populate the user reference
-        candidates = await DatingProfile.populate(candidates, {
-            path: "user",
-            select: "username fullName avatar collegeName verificationStatus"
-        });
+        let candidates = await DatingProfile.find(queryFilter)
+            .select("user gender interestedIn interests bio age photos photoOrder")
+            .limit(20)
+            .populate("user", "username fullName avatar collegeName verificationStatus")
+            .lean();
 
         // Filter out orphaned dating profiles (where the user account was deleted)
         candidates = candidates.filter(c => c.user != null);
@@ -227,8 +186,6 @@ async function swipeRight(req, res) {
             // 2️⃣  Emit a real-time socket event so they see it instantly
             const io = req.app.get("io");
             if (io) {
-                const onlineUsers = io._onlineUsers || new Map();
-                const targetSocketId = onlineUsers.get(String(targetUserId));
                 const payload = {
                     type: "dating_match",
                     sender: {
@@ -240,12 +197,8 @@ async function swipeRight(req, res) {
                     message: `${meUser.username} is interested in you! You have a new match 💘`,
                     createdAt: new Date().toISOString()
                 };
-
-                if (targetSocketId) {
-                    io.to(targetSocketId).emit("dating-match", payload);
-                } else {
-                    io.emit(`dating-match-${targetUserId}`, payload);
-                }
+                io.to(String(targetUserId)).emit("dating-match", payload);
+                io.emit(`dating-match-${targetUserId}`, payload);
             }
         } else {
             // Not a match yet. Send a dating_like notification
@@ -258,8 +211,6 @@ async function swipeRight(req, res) {
 
             const io = req.app.get("io");
             if (io) {
-                const onlineUsers = io._onlineUsers || new Map();
-                const targetSocketId = onlineUsers.get(String(targetUserId));
                 const payload = {
                     type: "dating_like",
                     sender: {
@@ -271,12 +222,8 @@ async function swipeRight(req, res) {
                     message: `${meUser.username} is interested in you! 💘`,
                     createdAt: new Date().toISOString()
                 };
-
-                if (targetSocketId) {
-                    io.to(targetSocketId).emit("dating-like", payload);
-                } else {
-                    io.emit(`dating-like-${targetUserId}`, payload);
-                }
+                io.to(String(targetUserId)).emit("dating-like", payload);
+                io.emit(`dating-like-${targetUserId}`, payload);
             }
         }
 

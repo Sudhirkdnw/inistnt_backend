@@ -240,14 +240,10 @@ const toggleLike = async (req, res) => {
                 
                 const io = req.app.get("io");
                 if (io) {
-                    const onlineUsers = io._onlineUsers || new Map();
-                    const targetSocketId = onlineUsers.get(String(confession.user));
-                    if (targetSocketId) {
-                        const populatedNotif = await notificationModel.findById(notif._id)
-                            .populate("sender", "username fullName avatar")
-                            .populate("confession", "confessionText category");
-                        io.to(targetSocketId).emit("new-notification", populatedNotif);
-                    }
+                    const populatedNotif = await notificationModel.findById(notif._id)
+                        .populate("sender", "username fullName avatar")
+                        .populate("confession", "confessionText category");
+                    io.to(String(confession.user)).emit("new-notification", populatedNotif);
                 }
             }
         }
@@ -310,14 +306,10 @@ const addComment = async (req, res) => {
                     
                     const io = req.app.get("io");
                     if (io) {
-                        const onlineUsers = io._onlineUsers || new Map();
-                        const targetSocketId = onlineUsers.get(String(parentComment.user));
-                        if (targetSocketId) {
-                            const popNotif = await notificationModel.findById(notif._id)
-                                .populate("sender", "username fullName avatar")
-                                .populate("confession", "confessionText category");
-                            io.to(targetSocketId).emit("new-notification", popNotif);
-                        }
+                        const popNotif = await notificationModel.findById(notif._id)
+                            .populate("sender", "username fullName avatar")
+                            .populate("confession", "confessionText category");
+                        io.to(String(parentComment.user)).emit("new-notification", popNotif);
                     }
                 }
             }
@@ -341,14 +333,10 @@ const addComment = async (req, res) => {
             
             const io = req.app.get("io");
             if (io) {
-                const onlineUsers = io._onlineUsers || new Map();
-                const targetSocketId = onlineUsers.get(String(confession.user));
-                if (targetSocketId) {
-                    const popNotif = await notificationModel.findById(notif._id)
-                        .populate("sender", "username fullName avatar")
-                        .populate("confession", "confessionText category");
-                    io.to(targetSocketId).emit("new-notification", popNotif);
-                }
+                const popNotif = await notificationModel.findById(notif._id)
+                    .populate("sender", "username fullName avatar")
+                    .populate("confession", "confessionText category");
+                io.to(String(confession.user)).emit("new-notification", popNotif);
             }
         }
         
@@ -533,14 +521,10 @@ const toggleCommentLike = async (req, res) => {
                 
                 const io = req.app.get("io");
                 if (io) {
-                    const onlineUsers = io._onlineUsers || new Map();
-                    const targetSocketId = onlineUsers.get(String(comment.user));
-                    if (targetSocketId) {
-                        const popNotif = await notificationModel.findById(notif._id)
-                            .populate("sender", "username fullName avatar")
-                            .populate("confession", "confessionText category");
-                        io.to(targetSocketId).emit("new-notification", popNotif);
-                    }
+                    const popNotif = await notificationModel.findById(notif._id)
+                        .populate("sender", "username fullName avatar")
+                        .populate("confession", "confessionText category");
+                    io.to(String(comment.user)).emit("new-notification", popNotif);
                 }
             }
         }

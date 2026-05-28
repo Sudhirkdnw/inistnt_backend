@@ -107,14 +107,14 @@ setupSwagger(app);
 
 // API Routes
 app.use("/api/auth", rateLimiter({ windowMs: 15 * 60 * 1000, max: 100, prefix: 'auth' }), authRoutes);
-app.use("/api/confessions", confessionRoutes);
-app.use("/api/users", userRoutes);
+app.use("/api/confessions", rateLimiter({ windowMs: 60 * 1000, max: 150, prefix: 'confessions' }), confessionRoutes);
+app.use("/api/users", rateLimiter({ windowMs: 60 * 1000, max: 100, prefix: 'users' }), userRoutes);
 app.use("/api/stories", storyRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/ai", aiRoutes);
-app.use("/api/chat", chatRoutes);
-app.use("/api/dating", datingRoutes);
+app.use("/api/chat", rateLimiter({ windowMs: 60 * 1000, max: 200, prefix: 'chat' }), chatRoutes);
+app.use("/api/dating", rateLimiter({ windowMs: 60 * 1000, max: 100, prefix: 'dating' }), datingRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/settings", settingsRoutes);
