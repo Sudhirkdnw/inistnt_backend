@@ -47,9 +47,17 @@ const runCleanupJob = async () => {
             ]
         });
 
+        // --- 3. Clean up Notifications (Older than 14 days) ---
+        const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+        const notificationModel = require('../models/notification.model');
+        const notificationDeleteResult = await notificationModel.deleteMany({
+            createdAt: { $lt: fourteenDaysAgo }
+        });
+
         console.log(`✅ [Cleanup Job] Finished.`);
         console.log(`   - Deleted ${messageDeleteResult.deletedCount} old messages (${mediaDeletedCount} media files removed from Cloudinary)`);
         console.log(`   - Deleted ${confessionDeleteResult.deletedCount} old confessions (Ignored reported ones)`);
+        console.log(`   - Deleted ${notificationDeleteResult.deletedCount} old notifications`);
 
     } catch (error) {
         console.error('❌ [Cleanup Job] Failed to run cleanup:', error.message);

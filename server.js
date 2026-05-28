@@ -113,7 +113,7 @@ io.on("connection", (socket) => {
         socket.join(uid);
         onlineUsers.set(uid, socket.id);
         socket.userId = uid;
-        io.emit("online-users", Array.from(onlineUsers.keys()));
+        // io.emit("online-users", Array.from(onlineUsers.keys()));
     });
 
     socket.on("join-conversation", async (conversationId) => {
@@ -161,7 +161,7 @@ io.on("connection", (socket) => {
     socket.on("disconnect", () => {
         if (socket.userId) {
             onlineUsers.delete(socket.userId);
-            io.emit("online-users", Array.from(onlineUsers.keys()));
+            // io.emit("online-users", Array.from(onlineUsers.keys()));
         }
     });
 });

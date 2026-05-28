@@ -1,4 +1,5 @@
 const storyModel = require('../models/story.model');
+const { uploadImage } = require('../utils/cloudinary');
 
 // POST /api/stories — Create story
 const createStory = async (req, res) => {
@@ -7,8 +8,7 @@ const createStory = async (req, res) => {
             return res.status(400).json({ message: "Image is required for a story" });
         }
 
-        const base64 = req.file.buffer.toString("base64");
-        const image = `data:${req.file.mimetype};base64,${base64}`;
+        const image = await uploadImage(req.file.buffer, { folder: 'inistnt/stories' }, req.file.mimetype);
 
         const story = await storyModel.create({
             user: req.user._id,

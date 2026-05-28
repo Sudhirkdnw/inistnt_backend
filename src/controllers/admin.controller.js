@@ -622,7 +622,17 @@ const handleDatingProfile = async (req, res) => {
         const datingModel = require("../models/dating.model");
 
         if (action === "delete") {
-            await datingModel.findByIdAndDelete(req.params.id);
+            const profile = await datingModel.findById(req.params.id);
+            if (profile) {
+                const targetUserId = profile.user;
+                await datingModel.findByIdAndDelete(req.params.id);
+                const Swipe = require("../models/swipe.model");
+                await Swipe.deleteMany({
+                    $or: [{ swiper: targetUserId }, { swipedUser: targetUserId }]
+                });
+            } else {
+                await datingModel.findByIdAndDelete(req.params.id);
+            }
             return res.status(200).json({ message: "Dating profile deleted" });
         }
 

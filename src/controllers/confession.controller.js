@@ -26,29 +26,8 @@ const createConfession = async (req, res) => {
         const allowAnon = getSetting('anonymous_confessions', true);
         const finalIsAnonymous = allowAnon ? (isAnonymous !== false) : false;
 
-        // AI Moderation
-        let isHidden = false;
-        if (getSetting('ai_moderation', true)) {
-            const { moderateContent } = require('../service/ai.service');
-            const moderation = await moderateContent(confessionText);
-            
-            if (!moderation.isSafe) {
-                const threshold = getSetting('ai_toxicity_threshold', 0.7);
-                if (moderation.toxicityScore >= threshold && getSetting('auto_hide_toxic', true)) {
-                    isHidden = true; // Still allow post but hide it immediately
-                } else {
-                    return res.status(403).json({ 
-                        message: "Content rejected by AI moderation", 
-                        reason: moderation.reason 
-                    });
-                }
-            }
-        }
-
         // Check Approval Mode
-        if (getSetting('confession_approval_mode', false)) {
-            isHidden = true;
-        }
+        const isHidden = getSetting('confession_approval_mode', false);
 
         const confession = await confessionModel.create({
             confessionText: confessionText.trim(),
@@ -58,6 +37,27 @@ const createConfession = async (req, res) => {
             isHidden: isHidden,
             collegeName: req.user.collegeName || ""
         });
+
+        // AI Moderation in the background (Non-blocking)
+        if (getSetting('ai_moderation', true)) {
+            setImmediate(async () => {
+                try {
+                    const { moderateContent } = require('../service/ai.service');
+                    const moderation = await moderateContent(confessionText);
+                    
+                    if (!moderation.isSafe) {
+                        const threshold = getSetting('ai_toxicity_threshold', 0.7);
+                        if (moderation.toxicityScore >= threshold && getSetting('auto_hide_toxic', true)) {
+                            await confessionModel.findByIdAndUpdate(confession._id, { isHidden: true });
+                        } else {
+                            await confessionModel.findByIdAndDelete(confession._id);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Background AI moderation error:", err.message);
+                }
+            });
+        }
 
         // Populate user only if NOT anonymous (for the creator's own view)
         const populated = await confession.populate("user", "username fullName avatar");

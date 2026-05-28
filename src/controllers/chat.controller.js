@@ -3,6 +3,7 @@ const Message = require("../models/message.model");
 const User = require("../models/user.model");
 const Confession = require("../models/confession.model");
 const { generateAnonymousName } = require("../utils/anonymousNames");
+const { uploadImage } = require("../utils/cloudinary");
 
 // Helper to anonymize participants
 function anonymizeParticipants(conversation, currentUserId) {
@@ -211,31 +212,6 @@ async function startConfessionChat(req, res) {
         res.status(500).json({ message: error.message });
     }
 }
-async function createGroup(req, res) {
-    try {
-        const { name, participantIds } = req.body;
-        const currentUserId = req.user._id;
-
-        if (!name || !participantIds || participantIds.length === 0) {
-            return res.status(400).json({ message: "Group name and participants are required" });
-        }
-
-        const participants = [currentUserId, ...participantIds];
-
-        let conversation = await Conversation.create({
-            type: "group",
-            name,
-            admin: currentUserId,
-            participants
-        });
-
-        conversation = await conversation.populate("participants", "username fullName avatar");
-
-        res.status(201).json(conversation);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-}
 
 async function getMessages(req, res) {
     try {
@@ -303,8 +279,7 @@ async function sendMessage(req, res) {
         let mediaType = undefined;
 
         if (req.file) {
-            const base64 = req.file.buffer.toString("base64");
-            mediaUrl = `data:${req.file.mimetype};base64,${base64}`;
+            mediaUrl = await uploadImage(req.file.buffer, {}, req.file.mimetype);
             
             if (req.file.mimetype.startsWith("image/")) mediaType = "image";
             else if (req.file.mimetype.startsWith("video/")) mediaType = "video";
@@ -392,46 +367,6 @@ async function sendMessage(req, res) {
     }
 }
 
-async function addGroupMember(req, res) {
-    try {
-        const { id } = req.params;
-        const { userId } = req.body;
-        const currentUserId = req.user._id;
-
-        const conversation = await Conversation.findOne({ _id: id, type: "group", admin: currentUserId });
-        if (!conversation) {
-            return res.status(403).json({ message: "Not authorized or conversation is not a group" });
-        }
-
-        if (!conversation.participants.includes(userId)) {
-            conversation.participants.push(userId);
-            await conversation.save();
-        }
-
-        res.status(200).json(conversation);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-}
-
-async function removeGroupMember(req, res) {
-    try {
-        const { id, userId } = req.params;
-        const currentUserId = req.user._id;
-
-        const conversation = await Conversation.findOne({ _id: id, type: "group", admin: currentUserId });
-        if (!conversation) {
-            return res.status(403).json({ message: "Not authorized or conversation is not a group" });
-        }
-
-        conversation.participants = conversation.participants.filter(p => p.toString() !== userId);
-        await conversation.save();
-
-        res.status(200).json(conversation);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-}
 
 async function deleteMessage(req, res) {
     try {
@@ -587,12 +522,9 @@ async function markAsRead(req, res) {
 module.exports = {
     getConversations,
     getOrCreateDM,
-    createGroup,
     startConfessionChat,
     getMessages,
     sendMessage,
-    addGroupMember,
-    removeGroupMember,
     deleteMessage,
     deleteConversation,
     likeMessage,

@@ -1,6 +1,7 @@
 const userModel = require("../models/user.model");
 const bcrypt = require("bcryptjs");
 const DatingProfile = require("../models/dating.model");
+const Swipe = require("../models/swipe.model");
 const notificationModel = require("../models/notification.model");
 const Confession = require("../models/confession.model");
 const Comment = require("../models/comment.model");
@@ -447,19 +448,21 @@ async function searchUsers(req, res) {
         const currentUser = await userModel.findById(req.user._id).select("following").lean();
         const followingSet = new Set(currentUser?.following ? currentUser.following.map(id => id.toString()) : []);
 
-        // 2. Fetch candidates from MongoDB using optimized regex on indexed fields (username, fullName, collegeName, bio)
-        const regexQuery = new RegExp(normalizedQuery, "i");
-        const orConditions = [
-            { username: { $regex: regexQuery } },
-            { fullName: { $regex: regexQuery } },
-            { collegeName: { $regex: regexQuery } },
-            { bio: { $regex: regexQuery } }
-        ];
+        // 2. Fetch candidates using optimized index-friendly query conditions (no wildcard prefix scans)
+        const isUsernameQuery = normalizedQuery.startsWith('@');
+        const searchTerm = isUsernameQuery ? normalizedQuery.substring(1) : normalizedQuery;
 
-        // Also add fuzzy candidates by prefix if query is long enough for typo tolerance
-        if (normalizedQuery.length >= 3) {
-            const prefix = normalizedQuery.slice(0, 2);
-            orConditions.push({ username: { $regex: new RegExp(`^${prefix}`, "i") } });
+        const orConditions = [];
+        if (isUsernameQuery) {
+            // Anchor search using ^ (uses unique username index)
+            orConditions.push({ username: { $regex: new RegExp(`^${searchTerm}`, "i") } });
+        } else {
+            // Anchor search on username and fullName (uses index)
+            orConditions.push({ username: { $regex: new RegExp(`^${searchTerm}`, "i") } });
+            orConditions.push({ fullName: { $regex: new RegExp(`^${searchTerm}`, "i") } });
+            
+            // Text search fallback (uses native MongoDB text index on username & fullName)
+            orConditions.push({ $text: { $search: searchTerm } });
         }
 
         const candidates = await userModel.find({
@@ -741,6 +744,9 @@ async function hardDeleteAccount(req, res) {
                 $pull: { likedUsers: userId, passedUsers: userId, matches: userId } 
             }
         );
+        await Swipe.deleteMany({
+            $or: [{ swiper: userId }, { swipedUser: userId }]
+        });
 
         // --- 5. Remove from Social Graph ---
         await userModel.updateMany(

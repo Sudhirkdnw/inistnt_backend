@@ -1,4 +1,5 @@
 const DatingProfile = require("../models/dating.model");
+const Swipe = require("../models/swipe.model");
 const userModel = require("../models/user.model");
 const notificationModel = require("../models/notification.model");
 const { uploadImage, deleteImage } = require("../utils/cloudinary");
@@ -102,23 +103,63 @@ async function getDiscovery(req, res) {
         if (myProfile.interestedIn === "male") genderFilter = { gender: "male" };
         else if (myProfile.interestedIn === "female") genderFilter = { gender: "female" };
 
-        // Exclude logic
-        const excludeIds = [
-            userId,
-            ...(myProfile.likedUsers || []),
-            ...(myProfile.passedUsers || []),
-            ...(myProfile.matches || [])
-        ];
+        const mongoose = require("mongoose");
+        const swiperObjectId = new mongoose.Types.ObjectId(userId);
+        const matchObjectIds = (myProfile.matches || []).map(id => new mongoose.Types.ObjectId(id));
 
-        let candidates = await DatingProfile.find({
-            user: { $nin: excludeIds },
+        // Base match: active profiles, matching gender preferences, excluding current user and their matches
+        const matchStage = {
             isDatingActive: true,
+            user: { $nin: [swiperObjectId, ...matchObjectIds] },
             ...genderFilter
-        })
-        .select('user gender interestedIn interests bio age photos photoOrder')
-        .populate("user", "username fullName avatar collegeName verificationStatus")
-        .limit(20)
-        .lean();
+        };
+
+        let candidates = await DatingProfile.aggregate([
+            { $match: matchStage },
+            {
+                $lookup: {
+                    from: "swipes",
+                    let: { candidateUserId: "$user" },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ["$swiper", swiperObjectId] },
+                                        { $eq: ["$swipedUser", "$$candidateUserId"] }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                    as: "mySwipe"
+                }
+            },
+            {
+                $match: {
+                    mySwipe: { $size: 0 }
+                }
+            },
+            {
+                $project: {
+                    user: 1,
+                    gender: 1,
+                    interestedIn: 1,
+                    interests: 1,
+                    bio: 1,
+                    age: 1,
+                    photos: 1,
+                    photoOrder: 1
+                }
+            },
+            { $limit: 20 }
+        ]);
+
+        // Populate the user reference
+        candidates = await DatingProfile.populate(candidates, {
+            path: "user",
+            select: "username fullName avatar collegeName verificationStatus"
+        });
 
         // Filter out orphaned dating profiles (where the user account was deleted)
         candidates = candidates.filter(c => c.user != null);
@@ -143,19 +184,27 @@ async function swipeRight(req, res) {
             return res.status(404).json({ message: "Profile not found" });
         }
 
-        // Add to liked
-        if (!myProfile.likedUsers.includes(targetUserId)) {
-            myProfile.likedUsers.push(targetUserId);
-            await myProfile.save();
-        }
+        // Add swipe record using the Swipe model
+        await Swipe.findOneAndUpdate(
+            { swiper: userId, swipedUser: targetUserId },
+            { action: "like" },
+            { upsert: true, new: true }
+        );
 
-        // Check if they already liked me back → MATCH!
+        // Check if they already liked me back (check Swipe model, or backward compatible check on legacy likedUsers)
+        const reciprocalSwipe = await Swipe.findOne({
+            swiper: targetUserId,
+            swipedUser: userId,
+            action: "like"
+        });
+
+        const isLikedBack = reciprocalSwipe || (theirProfile.likedUsers && theirProfile.likedUsers.includes(userId));
         let isMatch = false;
         
         // ── Populate the current user for notification message ──
         const meUser = await userModel.findById(userId).select("username fullName avatar");
 
-        if (theirProfile.likedUsers.includes(userId)) {
+        if (isLikedBack) {
             // Create mutual match
             if (!myProfile.matches.includes(targetUserId)) {
                 myProfile.matches.push(targetUserId);
@@ -251,13 +300,15 @@ async function swipeLeft(req, res) {
         const myProfile = await DatingProfile.findOne({ user: userId });
         if (!myProfile) return res.status(404).json({ message: "Profile not found" });
 
-        if (!myProfile.passedUsers.includes(targetUserId)) {
-            myProfile.passedUsers.push(targetUserId);
-            await myProfile.save();
-        }
+        await Swipe.findOneAndUpdate(
+            { swiper: userId, swipedUser: targetUserId },
+            { action: "pass" },
+            { upsert: true, new: true }
+        );
 
         res.status(200).json({ message: "Passed" });
     } catch (err) {
+        console.error("swipeLeft error:", err);
         res.status(500).json({ message: "Server error" });
     }
 }
