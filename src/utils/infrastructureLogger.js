@@ -39,7 +39,8 @@ const TYPE_SYMBOLS = {
 
 let ioInstance = null;
 let pendingLogs = [];
-let isListeningToConnect = false;
+let isDbOpen = false;
+let isListeningToOpen = false;
 
 class InfrastructureLogger {
     /**
@@ -62,7 +63,7 @@ class InfrastructureLogger {
                 ioInstance.to("admin:monitoring").emit("infrastructure-log", persistedLog);
             }
         } catch (err) {
-            console.error(`❌ [Logger System] Failed to persist infrastructure log to database:`, err.message);
+            console.error(`❌ [Logger System] Failed to persist infrastructure log to database:`, err.stack || err.message);
         }
     }
 
@@ -98,19 +99,28 @@ class InfrastructureLogger {
 
         // 2. Async non-blocking DB persistence
         setImmediate(async () => {
-            if (mongoose.connection.readyState !== 1) {
+            if (!isDbOpen) {
                 // Buffer the logs if connection is not ready
                 pendingLogs.push(logPayload);
                 
-                if (!isListeningToConnect) {
-                    isListeningToConnect = true;
-                    mongoose.connection.once("connected", () => {
+                if (!isListeningToOpen) {
+                    isListeningToOpen = true;
+
+                    const onOpen = () => {
+                        isDbOpen = true;
                         const logsToProcess = [...pendingLogs];
                         pendingLogs = [];
                         logsToProcess.forEach(payload => {
                             InfrastructureLogger.persistLog(payload);
                         });
-                    });
+                    };
+
+                    // Check if already open
+                    if (mongoose.connection.readyState === 1 && mongoose.connection.db) {
+                        onOpen();
+                    } else {
+                        mongoose.connection.once("open", onOpen);
+                    }
                 }
             } else {
                 InfrastructureLogger.persistLog(logPayload);
