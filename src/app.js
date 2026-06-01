@@ -127,13 +127,21 @@ app.get("/api/health", (req, res) => {
 
 // Serve frontend in production (SPA catch-all)
 if (process.env.NODE_ENV === "production") {
+    const fs = require('fs');
+    const indexPath = path.join(__dirname, "../public/index.html");
 
     app.use(express.static(path.join(__dirname, "../public")));
 
     app.use((req, res) => {
-        res.sendFile(
-            path.join(__dirname, "../public/index.html")
-        );
+        if (fs.existsSync(indexPath)) {
+            res.sendFile(indexPath);
+        } else {
+            res.status(200).json({
+                status: "success",
+                message: "Inistnt API Server is running in production mode.",
+                timestamp: new Date().toISOString()
+            });
+        }
     });
 }
 

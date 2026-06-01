@@ -2,6 +2,9 @@
   "ignore": [
     "admin/*",
     "client/*",
+    "Inistnt/*",
+    "logs/*",
+    "scratch/*",
     "node_modules/*",
     "*.test.js",
     "fixtures/*",
