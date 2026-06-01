@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const InfrastructureLog = require("../models/infrastructureLog.model");
 
 // ANSI color escape codes for terminal coloring
@@ -37,6 +38,8 @@ const TYPE_SYMBOLS = {
 };
 
 let ioInstance = null;
+let pendingLogs = [];
+let isListeningToConnect = false;
 
 class InfrastructureLogger {
     /**
@@ -44,6 +47,23 @@ class InfrastructureLogger {
      */
     static setSocketIO(io) {
         ioInstance = io;
+    }
+
+    /**
+     * Persist log entry to MongoDB and broadcast via socket.io
+     */
+    static async persistLog(payload) {
+        try {
+            const logEntry = new InfrastructureLog(payload);
+            const persistedLog = await logEntry.save();
+            
+            // Socket.IO Real-time Stream to Admin panel
+            if (ioInstance) {
+                ioInstance.to("admin:monitoring").emit("infrastructure-log", persistedLog);
+            }
+        } catch (err) {
+            console.error(`❌ [Logger System] Failed to persist infrastructure log to database:`, err.message);
+        }
     }
 
     /**
@@ -64,29 +84,36 @@ class InfrastructureLogger {
             console.log(`${levelColor}${coloredMessage}${colors.reset}`);
         }
 
+        const logPayload = {
+            type,
+            level,
+            service,
+            message,
+            metadata,
+            timestamp,
+            status,
+            userId,
+            requestId
+        };
+
         // 2. Async non-blocking DB persistence
         setImmediate(async () => {
-            try {
-                const logEntry = new InfrastructureLog({
-                    type,
-                    level,
-                    service,
-                    message,
-                    metadata,
-                    timestamp,
-                    status,
-                    userId,
-                    requestId
-                });
+            if (mongoose.connection.readyState !== 1) {
+                // Buffer the logs if connection is not ready
+                pendingLogs.push(logPayload);
                 
-                const persistedLog = await logEntry.save();
-                
-                // 3. Socket.IO Real-time Stream to Admin panel
-                if (ioInstance) {
-                    ioInstance.to("admin:monitoring").emit("infrastructure-log", persistedLog);
+                if (!isListeningToConnect) {
+                    isListeningToConnect = true;
+                    mongoose.connection.once("connected", () => {
+                        const logsToProcess = [...pendingLogs];
+                        pendingLogs = [];
+                        logsToProcess.forEach(payload => {
+                            InfrastructureLogger.persistLog(payload);
+                        });
+                    });
                 }
-            } catch (err) {
-                console.error(`❌ [Logger System] Failed to persist infrastructure log to database:`, err.message);
+            } else {
+                InfrastructureLogger.persistLog(logPayload);
             }
         });
     }
