@@ -34,15 +34,26 @@ const rateLimiter = ({ windowMs = 60000, max = 100, prefix = 'rl' }) => {
         const key = userId ? `${prefix}:user:${userId}` : `${prefix}:ip:${ip}`;
 
         try {
-            const current = await redisClient.get(key);
-            
-            if (current && parseInt(current) >= max) {
+            const current = await redisClient.incr(key);
+
+            // Set expiration on first request in the window
+            if (current === 1) {
+                await redisClient.pexpire(key, windowMs);
+            } else {
+                // Auto-heal logic: If the key somehow has no TTL (TTL = -1), set it now to prevent permanent blocks
+                const ttl = await redisClient.pttl(key);
+                if (ttl < 0) {
+                    await redisClient.pexpire(key, windowMs);
+                }
+            }
+
+            if (current > max) {
                 InfrastructureLogger.rateLimit("WARNING", `Rate limit exceeded for ${userId ? `User: ${userId}` : `IP: ${ip}`} on route ${req.originalUrl}. Request blocked.`, {
                     ip,
                     userId,
                     route: req.originalUrl,
                     prefix,
-                    currentRequests: parseInt(current),
+                    currentRequests: current,
                     maxRequests: max,
                     windowMs
                 }, userId || null);
@@ -51,12 +62,6 @@ const rateLimiter = ({ windowMs = 60000, max = 100, prefix = 'rl' }) => {
                     message: "Too many requests. Please try again later.",
                     retryAfter: Math.ceil(windowMs / 1000)
                 });
-            }
-
-            if (!current) {
-                await redisClient.set(key, 1, 'PX', windowMs);
-            } else {
-                await redisClient.incr(key);
             }
 
             next();
