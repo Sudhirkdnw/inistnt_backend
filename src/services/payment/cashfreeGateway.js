@@ -28,8 +28,11 @@ class CashfreeGateway extends PaymentGateway {
         }
 
         const orderId = `cf_sub_${user._id.toString()}_${Date.now()}`;
+        const isSandboxMode = config.baseUrl.includes("sandbox");
 
         try {
+            console.log(`ℹ️ [Cashfree] Requesting order from config: App ID = ${config.appId}, Base URL = ${config.baseUrl}, SandboxMode = ${isSandboxMode}`);
+
             const response = await axios.post(
                 `${config.baseUrl}/orders`,
                 {
@@ -57,7 +60,6 @@ class CashfreeGateway extends PaymentGateway {
             );
 
             const orderData = response.data;
-            const isSandboxMode = config.baseUrl.includes("sandbox");
             
             // In Cashfree v3, the default orders API response doesn't contain a direct payment_link/checkoutUrl.
             // Instead, we construct the hosted checkout URL using the returned payment_session_id.
@@ -65,6 +67,8 @@ class CashfreeGateway extends PaymentGateway {
                 (isSandboxMode 
                     ? `https://payments-test.cashfree.com/order/#${orderData.payment_session_id}`
                     : `https://payments.cashfree.com/order/#${orderData.payment_session_id}`);
+
+            console.log(`ℹ️ [Cashfree] Order created successfully. Session ID: ${orderData.payment_session_id}, Redirect URL: ${checkoutUrl}`);
 
             return {
                 gateway: "cashfree",
