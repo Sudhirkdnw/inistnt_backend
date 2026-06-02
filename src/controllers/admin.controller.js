@@ -1544,7 +1544,7 @@ const updateCollege = async (req, res) => {
         const college = await College.findByIdAndUpdate(
             id,
             { $set: { isActive, aliases } },
-            { new: true }
+            { returnDocument: 'after' }
         );
 
         if (!college) return res.status(404).json({ message: "College not found" });

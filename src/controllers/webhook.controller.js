@@ -190,7 +190,7 @@ async function activatePremium({ userId, planId, gateway, gatewaySubscriptionId,
     const updatedUser = await userModel.findByIdAndUpdate(userId, {
         isPremium: true,
         premiumExpireAt: endDate
-    }, { new: true });
+    }, { returnDocument: 'after' });
 
     // Record payment history
     await paymentHistoryModel.create({

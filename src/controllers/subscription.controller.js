@@ -108,7 +108,7 @@ async function purchaseSubscription(req, res) {
         const updatedUser = await userModel.findByIdAndUpdate(userId, {
             isPremium: true,
             premiumExpireAt: endDate
-        }, { new: true });
+        }, { returnDocument: 'after' });
 
         // 6. Record payment history audit log
         await paymentHistoryModel.create({

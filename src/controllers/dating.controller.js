@@ -147,7 +147,7 @@ async function swipeRight(req, res) {
         await Swipe.findOneAndUpdate(
             { swiper: userId, swipedUser: targetUserId },
             { action: "like" },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
         );
 
         // Check if they already liked me back (check Swipe model, or backward compatible check on legacy likedUsers)
@@ -250,7 +250,7 @@ async function swipeLeft(req, res) {
         await Swipe.findOneAndUpdate(
             { swiper: userId, swipedUser: targetUserId },
             { action: "pass" },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
         );
 
         res.status(200).json({ message: "Passed" });
