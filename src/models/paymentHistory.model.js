@@ -35,7 +35,7 @@ const paymentHistorySchema = new mongoose.Schema({
     paymentGateway: {
         type: String,
         required: true,
-        enum: ["razorpay", "stripe", "google_play", "apple_store", "mock", "admin"],
+        enum: ["razorpay", "stripe", "google_play", "apple_store", "cashfree", "mock", "admin"],
         default: "mock"
     },
     gatewayTransactionId: {
