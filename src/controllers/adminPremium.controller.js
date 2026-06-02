@@ -4,7 +4,6 @@ const subscriptionModel = require("../models/subscription.model");
 const paymentHistoryModel = require("../models/paymentHistory.model");
 const premiumSettingsModel = require("../models/premiumSettings.model");
 const { invalidatePremiumSettingsCache } = require("../utils/premiumSettingsCache");
-
 // GET /api/admin/premium/settings — Get global premium settings
 async function getSettings(req, res) {
     try {
@@ -17,7 +16,10 @@ async function getSettings(req, res) {
                 stripeSecretKey: "",
                 stripeWebhookSecret: "",
                 razorpayKeyId: "",
-                razorpayKeySecret: ""
+                razorpayKeySecret: "",
+                cashfreeAppId: "",
+                cashfreeSecretKey: "",
+                cashfreeSandboxMode: true
             });
         }
         
@@ -25,6 +27,7 @@ async function getSettings(req, res) {
         if (settingsObj.stripeSecretKey) settingsObj.stripeSecretKey = "********";
         if (settingsObj.stripeWebhookSecret) settingsObj.stripeWebhookSecret = "********";
         if (settingsObj.razorpayKeySecret) settingsObj.razorpayKeySecret = "********";
+        if (settingsObj.cashfreeSecretKey) settingsObj.cashfreeSecretKey = "********";
 
         res.status(200).json({ settings: settingsObj });
     } catch (error) {
@@ -43,7 +46,10 @@ async function updateSettings(req, res) {
             stripeSecretKey, 
             stripeWebhookSecret, 
             razorpayKeyId, 
-            razorpayKeySecret 
+            razorpayKeySecret,
+            cashfreeAppId,
+            cashfreeSecretKey,
+            cashfreeSandboxMode
         } = req.body;
 
         let settings = await premiumSettingsModel.findOne();
@@ -56,6 +62,8 @@ async function updateSettings(req, res) {
         if (activeGateway !== undefined) settings.activeGateway = activeGateway;
         if (stripePublicKey !== undefined) settings.stripePublicKey = stripePublicKey;
         if (razorpayKeyId !== undefined) settings.razorpayKeyId = razorpayKeyId;
+        if (cashfreeAppId !== undefined) settings.cashfreeAppId = cashfreeAppId;
+        if (cashfreeSandboxMode !== undefined) settings.cashfreeSandboxMode = cashfreeSandboxMode;
 
         if (stripeSecretKey !== undefined && stripeSecretKey !== "********") {
             settings.stripeSecretKey = stripeSecretKey;
@@ -66,6 +74,9 @@ async function updateSettings(req, res) {
         if (razorpayKeySecret !== undefined && razorpayKeySecret !== "********") {
             settings.razorpayKeySecret = razorpayKeySecret;
         }
+        if (cashfreeSecretKey !== undefined && cashfreeSecretKey !== "********") {
+            settings.cashfreeSecretKey = cashfreeSecretKey;
+        }
 
         settings.updatedBy = req.user._id;
         await settings.save();
@@ -75,6 +86,7 @@ async function updateSettings(req, res) {
         if (settingsObj.stripeSecretKey) settingsObj.stripeSecretKey = "********";
         if (settingsObj.stripeWebhookSecret) settingsObj.stripeWebhookSecret = "********";
         if (settingsObj.razorpayKeySecret) settingsObj.razorpayKeySecret = "********";
+        if (settingsObj.cashfreeSecretKey) settingsObj.cashfreeSecretKey = "********";
 
         res.status(200).json({ 
             message: "Premium settings and payment gateway configurations updated successfully.", 

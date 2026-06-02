@@ -2,6 +2,7 @@ const mockGateway = require("./mockGateway");
 const stripeGateway = require("./stripeGateway");
 const razorpayGateway = require("./razorpayGateway");
 const playBillingGateway = require("./playBillingGateway");
+const cashfreeGateway = require("./cashfreeGateway");
 
 class GatewayFactory {
     /**
@@ -17,6 +18,8 @@ class GatewayFactory {
                 return stripeGateway;
             case "razorpay":
                 return razorpayGateway;
+            case "cashfree":
+                return cashfreeGateway;
             case "google_play":
             case "apple_store":
             case "in_app":

@@ -16,7 +16,7 @@ const { sendVerificationEmail } = require("../services/emailService");
 async function getUserProfile(req, res) {
     try {
         const user = await userModel.findById(req.params.id)
-            .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt isPremium")
+            .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt isPremium followRequests")
             .populate("followers", "username fullName avatar")
             .populate("following", "username fullName avatar")
             .lean();
@@ -780,6 +780,13 @@ async function acceptFollowRequest(req, res) {
             $addToSet: { following: currentUserId }
         });
 
+        // Delete follow request notification
+        await notificationModel.deleteOne({
+            recipient: currentUserId,
+            sender: requesterId,
+            type: "follow_request"
+        });
+
         // Create notification
         const notif = await notificationModel.create({
             recipient: requesterId,
@@ -818,6 +825,13 @@ async function declineFollowRequest(req, res) {
         });
         await userModel.findByIdAndUpdate(requesterId, {
             $pull: { sentFollowRequests: currentUserId }
+        });
+
+        // Delete follow request notification
+        await notificationModel.deleteOne({
+            recipient: currentUserId,
+            sender: requesterId,
+            type: "follow_request"
         });
 
         res.status(200).json({ message: "Follow request declined" });

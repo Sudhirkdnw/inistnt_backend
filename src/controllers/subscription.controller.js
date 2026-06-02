@@ -200,11 +200,13 @@ async function getSubscriptionStatus(req, res) {
         let settings = await getPremiumSettingsCached();
         const isPremiumRequired = settings ? settings.isPremiumRequired : true;
         const showMockGateway = settings ? settings.showMockGateway : true;
+        const activeGateway = settings ? settings.activeGateway : "mock";
 
         if (!userId) {
             return res.status(200).json({
                 isPremiumRequired,
                 showMockGateway: !!showMockGateway,
+                activeGateway,
                 isPremium: false,
                 premiumExpireAt: null,
                 subscription: null
@@ -226,6 +228,7 @@ async function getSubscriptionStatus(req, res) {
         res.status(200).json({
             isPremiumRequired,
             showMockGateway: !!showMockGateway,
+            activeGateway,
             isPremium: !!isPremium,
             premiumExpireAt: user.premiumExpireAt,
             subscription
