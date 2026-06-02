@@ -477,7 +477,7 @@ async function renderCashfreeCheckout(req, res) {
             isSandbox = settings ? settings.cashfreeSandboxMode : true;
         }
 
-        const returnUrl = `${req.protocol}://${req.get('host')}/api/subscriptions/cashfree-verify?planId=${planId}&token=${token}`;
+        const returnUrl = `${req.protocol}://${req.get('host')}/api/subscriptions/cashfree-verify?planId=${planId}&token=${token}&order_id={order_id}`;
 
         res.send(`
 <!DOCTYPE html>
