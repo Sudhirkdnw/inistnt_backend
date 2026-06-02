@@ -63,7 +63,7 @@ async function purchaseSubscription(req, res) {
             if (gatewayName === "cashfree") {
                 const authHeader = req.headers.authorization;
                 const token = authHeader && authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : req.cookies.token;
-                checkoutData.checkoutUrl = `${req.protocol}://${req.get('host')}/api/subscriptions/cashfree-checkout/${checkoutData.subscriptionId}?token=${token}&planId=${planId}&paymentSessionId=${checkoutData.paymentSessionId}`;
+                checkoutData.checkoutUrl = `${req.protocol}://${req.get('host')}/api/subscriptions/cashfree-checkout/${checkoutData.subscriptionId}?token=${token}&planId=${planId}&paymentSessionId=${checkoutData.paymentSessionId}&isTest=${checkoutData.isSandbox}`;
             }
 
             return res.status(200).json({
@@ -465,12 +465,17 @@ async function renderRazorpayCheckout(req, res) {
 async function renderCashfreeCheckout(req, res) {
     try {
         const { orderId } = req.params;
-        const { token, planId, paymentSessionId } = req.query;
+        const { token, planId, paymentSessionId, isTest } = req.query;
 
-        // Check if config sandbox mode is active
-        const { getPremiumSettingsCached } = require("../utils/premiumSettingsCache");
-        const settings = await getPremiumSettingsCached();
-        const isSandbox = settings ? settings.cashfreeSandboxMode : true;
+        // Determine if sandbox mode from the isTest query param first, fallback to db settings
+        let isSandbox = true;
+        if (isTest !== undefined) {
+            isSandbox = isTest === "true";
+        } else {
+            const { getPremiumSettingsCached } = require("../utils/premiumSettingsCache");
+            const settings = await getPremiumSettingsCached();
+            isSandbox = settings ? settings.cashfreeSandboxMode : true;
+        }
 
         const returnUrl = `${req.protocol}://${req.get('host')}/api/subscriptions/cashfree-verify?planId=${planId}&token=${token}`;
 

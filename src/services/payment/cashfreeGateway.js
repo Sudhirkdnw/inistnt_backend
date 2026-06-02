@@ -75,6 +75,7 @@ class CashfreeGateway extends PaymentGateway {
                 subscriptionId: orderData.order_id,
                 paymentSessionId: orderData.payment_session_id,
                 checkoutUrl: checkoutUrl,
+                isSandbox: isSandboxMode,
                 message: "Cashfree checkout session initialized successfully"
             };
         } catch (error) {
