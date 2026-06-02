@@ -39,7 +39,6 @@ const TYPE_SYMBOLS = {
 
 let ioInstance = null;
 let pendingLogs = [];
-let isDbOpen = false;
 let isListeningToOpen = false;
 
 class InfrastructureLogger {
@@ -99,7 +98,8 @@ class InfrastructureLogger {
 
         // 2. Async non-blocking DB persistence
         setImmediate(async () => {
-            if (!isDbOpen) {
+            const isConnected = mongoose.connection.readyState === 1 && mongoose.connection.db;
+            if (!isConnected) {
                 // Buffer the logs if connection is not ready
                 pendingLogs.push(logPayload);
                 
@@ -107,7 +107,7 @@ class InfrastructureLogger {
                     isListeningToOpen = true;
 
                     const onOpen = () => {
-                        isDbOpen = true;
+                        isListeningToOpen = false;
                         const logsToProcess = [...pendingLogs];
                         pendingLogs = [];
                         logsToProcess.forEach(payload => {
@@ -115,7 +115,7 @@ class InfrastructureLogger {
                         });
                     };
 
-                    // Check if already open
+                    // Check if open in the meantime
                     if (mongoose.connection.readyState === 1 && mongoose.connection.db) {
                         onOpen();
                     } else {
