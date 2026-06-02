@@ -6,8 +6,23 @@ const { getSetting } = require('../utils/settings');
 const maintenanceMiddleware = async (req, res, next) => {
     const isMaintenance = getSetting('maintenance_mode', false);
     
-    // Always allow health checks and admin routes
-    if (!isMaintenance || req.path.startsWith('/api/admin') || req.path === '/api/health') {
+    // Always allow health checks, public settings, and authentication routes
+    const allowedPaths = [
+        '/api/health',
+        '/api/settings/public',
+        '/api/auth/login',
+        '/api/auth/verify-admin-otp',
+        '/api/auth/resend-otp',
+        '/api/auth/forgot-password',
+        '/api/auth/reset-password',
+        '/api/auth/logout'
+    ];
+
+    const isAllowed = allowedPaths.some(p => {
+        return req.path === p || req.path.startsWith(p + '/');
+    }) || req.path.startsWith('/api/admin');
+
+    if (!isMaintenance || isAllowed) {
         return next();
     }
 
