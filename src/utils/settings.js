@@ -102,12 +102,31 @@ const syncSettings = async () => {
     }
 };
 
+let isSynced = false;
+
 /**
  * Loads all settings from DB into memory
  */
 const loadSettings = async () => {
     try {
-        await syncSettings(); // Run once at boot
+        if (!isSynced) {
+            await syncSettings(); // Run once at boot
+            isSynced = true;
+
+            // Automatically refresh in-memory settings cache every 10 seconds across all PM2 cluster workers
+            setInterval(async () => {
+                try {
+                    const settings = await Setting.find();
+                    cachedSettings = settings.reduce((acc, s) => {
+                        acc[s.key] = s.value;
+                        return acc;
+                    }, {});
+                } catch (err) {
+                    console.error("❌ Failed to refresh settings cache:", err.message);
+                }
+            }, 10000);
+        }
+
         const settings = await Setting.find();
         cachedSettings = settings.reduce((acc, s) => {
             acc[s.key] = s.value;
