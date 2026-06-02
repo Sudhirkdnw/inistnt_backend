@@ -10,7 +10,8 @@ const {
     deleteMessage,
     deleteConversation,
     likeMessage,
-    markAsRead
+    markAsRead,
+    contactAdmin
 } = require("../controllers/chat.controller");
 
 const multer = require("multer");
@@ -19,6 +20,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.use(authMiddleware);
 
 router.get("/", getConversations);
+router.post("/contact-admin", contactAdmin);
 router.post("/dm/:userId", getOrCreateDM);
 router.post("/confession/:confessionId", startConfessionChat);
 router.get("/:id/messages", getMessages);

@@ -519,6 +519,42 @@ async function markAsRead(req, res) {
     }
 }
 
+async function contactAdmin(req, res) {
+    try {
+        const currentUserId = req.user._id;
+
+        // Find the first admin user
+        const admin = await User.findOne({ role: "admin" }).sort({ createdAt: 1 });
+        if (!admin) {
+            return res.status(404).json({ message: "No support administrator is currently available." });
+        }
+
+        const adminId = admin._id;
+
+        if (adminId.toString() === currentUserId.toString()) {
+            return res.status(400).json({ message: "You are an admin. Admins cannot start support chat with themselves." });
+        }
+
+        // Check if DM already exists
+        let conversation = await Conversation.findOne({
+            type: "dm",
+            participants: { $all: [currentUserId, adminId] }
+        }).populate("participants", "username fullName avatar");
+
+        if (!conversation) {
+            conversation = await Conversation.create({
+                type: "dm",
+                participants: [currentUserId, adminId]
+            });
+            conversation = await conversation.populate("participants", "username fullName avatar");
+        }
+
+        res.status(200).json(conversation);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
+
 module.exports = {
     getConversations,
     getOrCreateDM,
@@ -528,5 +564,7 @@ module.exports = {
     deleteMessage,
     deleteConversation,
     likeMessage,
-    markAsRead
+    markAsRead,
+    contactAdmin
 };
+

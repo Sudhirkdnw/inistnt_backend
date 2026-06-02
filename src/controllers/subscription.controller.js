@@ -60,6 +60,12 @@ async function purchaseSubscription(req, res) {
                 checkoutData.checkoutUrl = `${req.protocol}://${req.get('host')}/api/subscriptions/razorpay-checkout/${checkoutData.subscriptionId}?token=${token}`;
             }
 
+            if (gatewayName === "cashfree") {
+                const authHeader = req.headers.authorization;
+                const token = authHeader && authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : req.cookies.token;
+                checkoutData.checkoutUrl = `${req.protocol}://${req.get('host')}/api/subscriptions/cashfree-checkout/${checkoutData.subscriptionId}?token=${token}&planId=${planId}&paymentSessionId=${checkoutData.paymentSessionId}`;
+            }
+
             return res.status(200).json({
                 message: "Checkout session initialized",
                 ...checkoutData
@@ -455,10 +461,329 @@ async function renderRazorpayCheckout(req, res) {
     }
 }
 
+// GET /api/subscriptions/cashfree-checkout/:orderId
+async function renderCashfreeCheckout(req, res) {
+    try {
+        const { orderId } = req.params;
+        const { token, planId, paymentSessionId } = req.query;
+
+        // Check if config sandbox mode is active
+        const { getPremiumSettingsCached } = require("../utils/premiumSettingsCache");
+        const settings = await getPremiumSettingsCached();
+        const isSandbox = settings ? settings.cashfreeSandboxMode : true;
+
+        const returnUrl = `${req.protocol}://${req.get('host')}/api/subscriptions/cashfree-verify?planId=${planId}&token=${token}`;
+
+        res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Inistnt Premium - Cashfree Checkout</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            text-align: center;
+            max-width: 400px;
+        }
+        .loader {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #e1306c;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        h2 {
+            margin-top: 10px;
+            font-size: 22px;
+            color: #e1306c;
+        }
+        p {
+            color: #aeaeae;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="loader" id="loader"></div>
+        <h2 id="status">Connecting to Cashfree...</h2>
+        <p id="sub-status">Please wait while we initialize the secure payment screen. Do not refresh or close this page.</p>
+    </div>
+
+    <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
+    <script>
+        try {
+            const cashfree = Cashfree({
+                mode: "${isSandbox ? 'sandbox' : 'production'}"
+            });
+            
+            cashfree.checkout({
+                paymentSessionId: "${paymentSessionId}",
+                returnUrl: "${returnUrl}"
+            });
+        } catch (err) {
+            document.getElementById("loader").style.display = "none";
+            document.getElementById("status").innerText = "Initialization Failed ❌";
+            document.getElementById("sub-status").innerText = err.message || "Could not load Cashfree SDK.";
+        }
+    </script>
+</body>
+</html>
+        `);
+    } catch (err) {
+        console.error("❌ [Cashfree Checkout Page] Fatal error:", err.message);
+        res.status(500).send(`An error occurred: ${err.message}`);
+    }
+}
+
+// GET /api/subscriptions/cashfree-verify
+async function renderCashfreeVerify(req, res) {
+    try {
+        const { order_id, planId, token } = req.query;
+
+        // Find plan
+        const plan = await subscriptionPlanModel.findById(planId);
+        if (!plan) {
+            throw new Error("Plan not found");
+        }
+
+        // Decode token to get userId
+        const jwt = require("jsonwebtoken");
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const userId = decoded.id;
+
+        // Verify payment
+        const gateway = gatewayFactory.getGateway("cashfree");
+        const verification = await gateway.verifyPayment({ orderId: order_id });
+
+        if (!verification.success) {
+            throw new Error("Payment verification failed or was cancelled");
+        }
+
+        // Prevent payment spoofing / duplicate transaction claims
+        const duplicateTx = await paymentHistoryModel.findOne({ 
+            gatewayTransactionId: verification.transactionId,
+            status: "completed"
+        });
+
+        if (!duplicateTx) {
+            // Compute subscription dates
+            const startDate = new Date();
+            const endDate = new Date();
+            
+            let daysToAdd = plan.freeTrialDays || 0;
+            if (plan.billingPeriod === "weekly") daysToAdd += 7;
+            else if (plan.billingPeriod === "monthly") daysToAdd += 30;
+            else if (plan.billingPeriod === "yearly") daysToAdd += 365;
+            else daysToAdd += 30;
+
+            endDate.setDate(endDate.getDate() + daysToAdd);
+
+            // Save User Subscription record
+            const subscription = await subscriptionModel.create({
+                user: userId,
+                plan: planId,
+                status: "active",
+                startDate,
+                endDate,
+                paymentGateway: "cashfree",
+                gatewaySubscriptionId: verification.subscriptionId || ""
+            });
+
+            // Update User Document premium values
+            const updatedUser = await userModel.findByIdAndUpdate(userId, {
+                isPremium: true,
+                premiumExpireAt: endDate
+            }, { returnDocument: 'after' });
+
+            // Record payment history audit log
+            await paymentHistoryModel.create({
+                user: userId,
+                subscription: subscription._id,
+                plan: planId,
+                amount: plan.price,
+                status: "completed",
+                paymentGateway: "cashfree",
+                gatewayTransactionId: verification.transactionId,
+                gatewayResponse: verification.rawResponse
+            });
+
+            // Send billing confirmation email
+            try {
+                const targetEmail = updatedUser.collegeEmail || updatedUser.email;
+                if (targetEmail) {
+                    const emailService = require("../services/email");
+                    await emailService.sendBillingEmail(targetEmail, updatedUser.fullName || updatedUser.username, {
+                        planName: plan.name,
+                        amount: plan.price,
+                        gateway: "cashfree",
+                        transactionId: verification.transactionId,
+                        date: startDate.toLocaleDateString(),
+                        expiryDate: endDate.toLocaleDateString()
+                    });
+                }
+            } catch (emailErr) {
+                console.error("Email send error during verification:", emailErr.message);
+            }
+        }
+
+        // Render success page
+        res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Payment Verified</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            text-align: center;
+            max-width: 400px;
+        }
+        .btn {
+            background-color: #e1306c;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 20px;
+            transition: opacity 0.2s;
+        }
+        h2 {
+            margin-top: 10px;
+            font-size: 22px;
+            color: #4caf50;
+        }
+        p {
+            color: #aeaeae;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Payment Verified! 🎉</h2>
+        <p>Your premium membership is active. You will be redirected back to the Inistnt app shortly.</p>
+        <a href="inistnt://premium/success" class="btn">Open App</a>
+    </div>
+    <script>
+        setTimeout(() => {
+            window.location.href = "inistnt://premium/success";
+        }, 2000);
+    </script>
+</body>
+</html>
+        `);
+    } catch (err) {
+        console.error("❌ [Cashfree Verify] Error:", err.message);
+        res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Payment Failed</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            text-align: center;
+            max-width: 400px;
+        }
+        .btn {
+            background-color: #e1306c;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 20px;
+            transition: opacity 0.2s;
+        }
+        h2 {
+            margin-top: 10px;
+            font-size: 22px;
+            color: #f44336;
+        }
+        p {
+            color: #aeaeae;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Payment Verification Failed ❌</h2>
+        <p>${err.message || 'An error occurred while confirming your payment.'}</p>
+        <a href="inistnt://premium/cancel" class="btn">Back to App</a>
+    </div>
+    <script>
+        setTimeout(() => {
+            window.location.href = "inistnt://premium/cancel";
+        }, 3000);
+    </script>
+</body>
+</html>
+        `);
+    }
+}
+
 module.exports = {
     getActivePlans,
     purchaseSubscription,
     cancelSubscription,
     getSubscriptionStatus,
-    renderRazorpayCheckout
+    renderRazorpayCheckout,
+    renderCashfreeCheckout,
+    renderCashfreeVerify
 };
