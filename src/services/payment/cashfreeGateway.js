@@ -43,7 +43,7 @@ class CashfreeGateway extends PaymentGateway {
                         customer_phone: "9999999999" // Cashfree requires a customer phone, fallback to dummy
                     },
                     order_meta: {
-                        return_url: `${process.env.CLIENT_URL || "http://localhost:3000"}/premium/success?order_id={order_id}`
+                        return_url: `${(process.env.CLIENT_URL || "https://inistnt.in").replace(/^http:\/\//i, "https://")}/premium/success?order_id={order_id}`
                     }
                 },
                 {
