@@ -16,6 +16,7 @@ const adminLoginLogSchema = new mongoose.Schema({
 
 adminLoginLogSchema.index({ username: 1, createdAt: -1 });
 adminLoginLogSchema.index({ status: 1, createdAt: -1 });
+adminLoginLogSchema.index({ createdAt: -1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }); // Auto-delete logs older than 30 days (2,592,000 seconds)
 
 const adminLoginLogModel = mongoose.model("adminLoginLog", adminLoginLogSchema);
 module.exports = adminLoginLogModel;

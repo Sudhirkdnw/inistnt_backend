@@ -73,6 +73,7 @@ class CashfreeGateway extends PaymentGateway {
             return {
                 gateway: "cashfree",
                 subscriptionId: orderData.order_id,
+                paymentSessionId: orderData.payment_session_id,
                 checkoutUrl: checkoutUrl,
                 message: "Cashfree checkout session initialized successfully"
             };

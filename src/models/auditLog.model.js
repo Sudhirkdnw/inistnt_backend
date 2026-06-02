@@ -72,7 +72,7 @@ auditLogSchema.pre("findOneAndRemove", blockDelete);
 auditLogSchema.index({ admin: 1, createdAt: -1 });
 auditLogSchema.index({ targetUser: 1, createdAt: -1 });
 auditLogSchema.index({ action: 1, createdAt: -1 });
-auditLogSchema.index({ createdAt: -1 });
+auditLogSchema.index({ createdAt: -1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }); // Auto-delete logs older than 30 days (2,592,000 seconds)
 
 const auditLogModel = mongoose.model("auditLog", auditLogSchema);
 

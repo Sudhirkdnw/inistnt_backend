@@ -29,7 +29,8 @@ const infrastructureLogSchema = new mongoose.Schema(
         timestamp: {
             type: Date,
             default: Date.now,
-            index: true
+            index: true,
+            expires: 3 * 24 * 60 * 60 // Auto-delete logs older than 3 days (259,200 seconds)
         },
         status: {
             type: String,
@@ -43,12 +44,6 @@ const infrastructureLogSchema = new mongoose.Schema(
         requestId: {
             type: String,
             index: true
-        }
-    },
-    {
-        capped: {
-            size: 50 * 1024 * 1024, // 50 MB
-            max: 20000 // 20,000 documents limit
         }
     }
 );
