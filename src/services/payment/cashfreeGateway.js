@@ -57,11 +57,19 @@ class CashfreeGateway extends PaymentGateway {
             );
 
             const orderData = response.data;
+            const isSandboxMode = config.baseUrl.includes("sandbox");
+            
+            // In Cashfree v3, the default orders API response doesn't contain a direct payment_link/checkoutUrl.
+            // Instead, we construct the hosted checkout URL using the returned payment_session_id.
+            const checkoutUrl = orderData.payment_link || 
+                (isSandboxMode 
+                    ? `https://payments-test.cashfree.com/order/#${orderData.payment_session_id}`
+                    : `https://payments.cashfree.com/order/#${orderData.payment_session_id}`);
 
             return {
                 gateway: "cashfree",
                 subscriptionId: orderData.order_id,
-                checkoutUrl: orderData.payment_link || orderData.payments?.url,
+                checkoutUrl: checkoutUrl,
                 message: "Cashfree checkout session initialized successfully"
             };
         } catch (error) {
