@@ -8,7 +8,7 @@ const userModel = require('../models/user.model');
 // POST /api/confessions — Create confession
 const createConfession = async (req, res) => {
     try {
-        const { confessionText, category, isAnonymous } = req.body;
+        const { confessionText, category, isAnonymous, pollOptions } = req.body;
 
         const { containsPhoneNumber } = require('../utils/phoneFilter');
         if (confessionText && containsPhoneNumber(confessionText)) {
@@ -34,13 +34,36 @@ const createConfession = async (req, res) => {
         // Check Approval Mode
         const isHidden = getSetting('confession_approval_mode', false);
 
+        let poll = null;
+        if (pollOptions) {
+            if (!Array.isArray(pollOptions)) {
+                return res.status(400).json({ message: "Poll options must be an array" });
+            }
+            const cleanOptions = pollOptions.map(opt => opt ? opt.trim() : "").filter(Boolean);
+            if (cleanOptions.length < 2) {
+                return res.status(400).json({ message: "A poll must have at least 2 options" });
+            }
+            if (cleanOptions.length > 10) {
+                return res.status(400).json({ message: "A poll can have at most 10 options" });
+            }
+            for (const option of cleanOptions) {
+                if (containsPhoneNumber(option)) {
+                    return res.status(400).json({ message: "Sharing phone numbers in poll options is not allowed." });
+                }
+            }
+            poll = {
+                options: cleanOptions.map(text => ({ text, votes: [] }))
+            };
+        }
+
         const confession = await confessionModel.create({
             confessionText: confessionText.trim(),
             category: category || "secret",
             user: req.user._id,
             isAnonymous: finalIsAnonymous,
             isHidden: isHidden,
-            collegeName: req.user.collegeName || ""
+            collegeName: req.user.collegeName || "",
+            ...(poll && { poll })
         });
 
         // AI Moderation in the background (Non-blocking)
@@ -69,7 +92,7 @@ const createConfession = async (req, res) => {
 
         res.status(201).json({ 
             message: isHidden ? "Confession submitted for approval" : "Confession posted", 
-            confession: populated,
+            confession: sanitizeConfession(populated, req.user._id),
             isPending: isHidden
         });
     } catch (error) {
@@ -101,7 +124,7 @@ const getFeed = async (req, res) => {
         if (cursor) filter._id = { $lt: cursor };
 
         const confessions = await confessionModel.find(filter)
-            .select('confessionText category user isAnonymous likes commentCount createdAt')
+            .select('confessionText category user isAnonymous likes commentCount poll createdAt')
             .populate("user", "username fullName avatar isPrivate")
             .sort({ _id: -1 })
             .limit(limit)
@@ -137,7 +160,7 @@ const getExplore = async (req, res) => {
             if (cursor) filter._id = { $lt: cursor };
 
             const confessions = await confessionModel.find(filter)
-                .select('confessionText category user isAnonymous likes commentCount createdAt')
+                .select('confessionText category user isAnonymous likes commentCount poll createdAt')
                 .populate("user", "username fullName avatar")
                 .sort({ _id: -1 })
                 .limit(limit)
@@ -170,7 +193,7 @@ const getExplore = async (req, res) => {
 const getConfession = async (req, res) => {
     try {
         const confession = await confessionModel.findById(req.params.id)
-            .select("confessionText category user isAnonymous likes commentCount isHidden isLocked isPinned isNSFW createdAt")
+            .select("confessionText category user isAnonymous likes commentCount isHidden isLocked isPinned isNSFW poll createdAt")
             .populate("user", "username fullName avatar isPrivate followers")
             .populate("likes", "username fullName avatar")
             .lean();
@@ -310,7 +333,9 @@ const addComment = async (req, res) => {
                         confession: confession._id,
                         commentId: parentComment._id,
                         replyId: newComment._id,
-                        message: `${req.user.username} replied to your comment: "${parentComment.text.substring(0, 20)}..."`,
+                        message: confession.isAnonymous
+                            ? `Someone replied to your comment: "${parentComment.text.substring(0, 20)}..."`
+                            : `${req.user.username} replied to your comment: "${parentComment.text.substring(0, 20)}..."`,
                         previewText: text.trim().substring(0, 60) + (text.trim().length > 60 ? "..." : "")
                     });
                     
@@ -352,8 +377,12 @@ const addComment = async (req, res) => {
         
         const io = req.app.get("io");
         let emitComment = populatedComment.toObject();
-        if (confession.isAnonymous && emitComment.user._id.toString() === confession.user.toString()) {
-            emitComment.user = { _id: null, username: "Anonymous Author", avatar: "" };
+        if (confession.isAnonymous) {
+            if (emitComment.user._id.toString() === confession.user.toString()) {
+                emitComment.user = { _id: null, username: "Anonymous Author", fullName: "Anonymous Author", avatar: "" };
+            } else {
+                emitComment.user = { _id: null, username: "Anonymous", fullName: "Anonymous", avatar: "" };
+            }
         }
 
         if (io) {
@@ -394,9 +423,15 @@ const getComments = async (req, res) => {
         let sanitizedComments = comments;
         if (confession && confession.isAnonymous) {
             sanitizedComments = sanitizedComments.map(c => {
-                if (c.user && c.user._id.toString() === confession.user.toString()) {
-                    if (c.user._id.toString() !== req.user._id.toString()) {
-                        c.user = { _id: null, username: "Anonymous Author", avatar: "" };
+                if (c.user) {
+                    if (c.user._id.toString() === confession.user.toString()) {
+                        if (c.user._id.toString() !== req.user._id.toString()) {
+                            c.user = { _id: null, username: "Anonymous Author", fullName: "Anonymous Author", avatar: "" };
+                        }
+                    } else {
+                        if (c.user._id.toString() !== req.user._id.toString()) {
+                            c.user = { _id: null, username: "Anonymous", fullName: "Anonymous", avatar: "" };
+                        }
                     }
                 }
                 return c;
@@ -438,11 +473,18 @@ const getReplies = async (req, res) => {
         
         if (parentComment) {
             const confession = await confessionModel.findById(parentComment.confession);
+            
             if (confession && confession.isAnonymous) {
                 sanitizedReplies = sanitizedReplies.map(r => {
-                    if (r.user && r.user._id.toString() === confession.user.toString()) {
-                        if (r.user._id.toString() !== req.user._id.toString()) {
-                            r.user = { _id: null, username: "Anonymous Author", avatar: "" };
+                    if (r.user) {
+                        if (r.user._id.toString() === confession.user.toString()) {
+                            if (r.user._id.toString() !== req.user._id.toString()) {
+                                r.user = { _id: null, username: "Anonymous Author", fullName: "Anonymous Author", avatar: "" };
+                            }
+                        } else {
+                            if (r.user._id.toString() !== req.user._id.toString()) {
+                                r.user = { _id: null, username: "Anonymous", fullName: "Anonymous", avatar: "" };
+                            }
                         }
                     }
                     return r;
@@ -630,7 +672,7 @@ const getUserConfessions = async (req, res) => {
         if (cursor) filter._id = { $lt: cursor };
 
         const confessions = await confessionModel.find(filter)
-            .select("confessionText category user isAnonymous likes commentCount isHidden isLocked isPinned isNSFW createdAt")
+            .select("confessionText category user isAnonymous likes commentCount isHidden isLocked isPinned isNSFW poll createdAt")
             .populate("user", "username fullName avatar")
             .sort({ _id: -1 })
             .limit(limit)
@@ -642,6 +684,63 @@ const getUserConfessions = async (req, res) => {
             confessions,
             nextCursor,
             hasMore: confessions.length === limit
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// POST /api/confessions/:id/vote — Vote/toggle vote for a poll option
+const votePollOption = async (req, res) => {
+    try {
+        const { optionId } = req.body;
+        if (!optionId) {
+            return res.status(400).json({ message: "Option ID is required" });
+        }
+
+        const confession = await confessionModel.findById(req.params.id);
+        if (!confession) {
+            return res.status(404).json({ message: "Confession not found" });
+        }
+
+        if (!confession.poll || !confession.poll.options || confession.poll.options.length === 0) {
+            return res.status(400).json({ message: "This confession does not have a poll" });
+        }
+
+        const optionToVote = confession.poll.options.find(opt => opt._id.toString() === optionId.toString());
+        if (!optionToVote) {
+            return res.status(404).json({ message: "Option not found in this poll" });
+        }
+
+        const userId = req.user._id;
+        const alreadyVoted = optionToVote.votes.includes(userId);
+
+        if (alreadyVoted) {
+            // Unvote: Remove the user's vote from this option
+            optionToVote.votes.pull(userId);
+        } else {
+            // Vote: Remove user's vote from ALL options first (single-choice constraint)
+            confession.poll.options.forEach(opt => {
+                opt.votes.pull(userId);
+            });
+            // Then add vote to the target option
+            optionToVote.votes.addToSet(userId);
+        }
+
+        await confession.save();
+
+        // Invalidate Redis cache for this user
+        const cache = require('../service/cache.service');
+        if (cache && cache.invalidate) {
+            await cache.invalidate(`cache:${req.user._id}:*`);
+        }
+
+        // Return the updated, populated, and sanitized confession
+        const populated = await confession.populate("user", "username fullName avatar");
+
+        res.status(200).json({
+            message: alreadyVoted ? "Vote removed" : "Vote registered",
+            confession: sanitizeConfession(populated, req.user._id)
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -663,6 +762,23 @@ function sanitizeConfession(confession, currentUserId) {
             avatar: ""
         };
     }
+
+    if (obj.poll && obj.poll.options && obj.poll.options.length > 0) {
+        const totalVotes = obj.poll.options.reduce((sum, opt) => sum + (opt.votes ? opt.votes.length : 0), 0);
+        obj.poll.options = obj.poll.options.map(opt => {
+            const votesArray = opt.votes || [];
+            return {
+                _id: opt._id,
+                text: opt.text,
+                votesCount: votesArray.length,
+                votedByMe: currentUserId ? votesArray.some(v => v.toString() === currentUserId.toString()) : false
+            };
+        });
+        obj.poll.totalVotes = totalVotes;
+    } else {
+        delete obj.poll;
+    }
+
     return obj;
 }
 
@@ -679,5 +795,6 @@ module.exports = {
     deleteComment,
     toggleCommentLike,
     reportConfession,
-    getUserConfessions
+    getUserConfessions,
+    votePollOption
 };

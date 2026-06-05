@@ -7,7 +7,7 @@ const {
     createConfession, getFeed, getExplore, getConfession,
     deleteConfession, toggleLike, addComment, deleteComment,
     getComments, getReplies, toggleCommentLike,
-    reportConfession, getUserConfessions
+    reportConfession, getUserConfessions, votePollOption
 } = require("../controllers/confession.controller");
 
 router.post('/', authMiddleware, createConfession);
@@ -17,6 +17,7 @@ router.get('/user/:userId', authMiddleware, cacheMiddleware(60), getUserConfessi
 router.get('/:id', authMiddleware, cacheMiddleware(60), getConfession);
 router.delete('/:id', authMiddleware, deleteConfession);
 router.post('/:id/like', authMiddleware, toggleLike);
+router.post('/:id/vote', authMiddleware, votePollOption);
 router.get('/:id/comments', authMiddleware, getComments);
 router.get('/comment/:commentId/replies', authMiddleware, getReplies);
 router.post('/:id/comment', authMiddleware, addComment);

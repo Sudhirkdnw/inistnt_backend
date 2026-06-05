@@ -56,6 +56,18 @@ const confessionSchema = new mongoose.Schema({
     isNSFW: {
         type: Boolean,
         default: false
+    },
+    poll: {
+        options: [{
+            text: {
+                type: String,
+                required: true
+            },
+            votes: [{
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "user"
+            }]
+        }]
     }
 }, { timestamps: true });
 
