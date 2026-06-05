@@ -7,6 +7,11 @@ const createPost = async (req, res) => {
     try {
         const { caption, tags, location } = req.body;
 
+        const { containsPhoneNumber } = require('../utils/phoneFilter');
+        if (caption && containsPhoneNumber(caption)) {
+            return res.status(400).json({ message: "Sharing phone numbers is not allowed." });
+        }
+
         let image = null;
         if (req.file) {
             // Upload buffer to Cloudinary → get CDN URL
@@ -128,6 +133,11 @@ const updatePost = async (req, res) => {
 
         const { caption, tags, location } = req.body;
 
+        const { containsPhoneNumber } = require('../utils/phoneFilter');
+        if (caption && containsPhoneNumber(caption)) {
+            return res.status(400).json({ message: "Sharing phone numbers is not allowed." });
+        }
+
         if (caption !== undefined) post.caption = caption;
         if (tags !== undefined) post.tags = Array.isArray(tags) ? tags : tags.split(",").map(t => t.trim());
         if (location !== undefined) post.location = location;
@@ -209,6 +219,11 @@ const toggleLike = async (req, res) => {
 const addComment = async (req, res) => {
     try {
         const { text } = req.body;
+
+        const { containsPhoneNumber } = require('../utils/phoneFilter');
+        if (text && containsPhoneNumber(text)) {
+            return res.status(400).json({ message: "Sharing phone numbers is not allowed." });
+        }
 
         if (!text || !text.trim()) {
             return res.status(400).json({ message: "Comment text is required" });

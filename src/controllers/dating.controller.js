@@ -8,6 +8,11 @@ const { uploadImage, deleteImage } = require("../utils/cloudinary");
 async function setupProfile(req, res) {
     try {
         const { gender, interestedIn, interests, bio, age, photos } = req.body;
+
+        const { containsPhoneNumber } = require("../utils/phoneFilter");
+        if (bio && containsPhoneNumber(bio)) {
+            return res.status(400).json({ message: "Sharing phone numbers is not allowed in bio." });
+        }
         const userId = req.user._id;
 
         let profile = await DatingProfile.findOne({ user: userId });

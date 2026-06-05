@@ -290,6 +290,11 @@ async function sendMessage(req, res) {
             return res.status(400).json({ message: "Message text or media is required" });
         }
 
+        const { containsPhoneNumber } = require("../utils/phoneFilter");
+        if (text && containsPhoneNumber(text)) {
+            return res.status(400).json({ message: "Sharing phone numbers is not allowed." });
+        }
+
         // Verify participation
         const conversation = await Conversation.findOne({ _id: id, participants: currentUserId });
         if (!conversation) {

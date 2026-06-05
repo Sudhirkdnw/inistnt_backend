@@ -10,6 +10,11 @@ const createConfession = async (req, res) => {
     try {
         const { confessionText, category, isAnonymous } = req.body;
 
+        const { containsPhoneNumber } = require('../utils/phoneFilter');
+        if (confessionText && containsPhoneNumber(confessionText)) {
+            return res.status(400).json({ message: "Sharing phone numbers is not allowed." });
+        }
+
         if (!confessionText || !confessionText.trim()) {
             return res.status(400).json({ message: "Confession text is required" });
         }
@@ -264,6 +269,11 @@ const toggleLike = async (req, res) => {
 const addComment = async (req, res) => {
     try {
         const { text, parentCommentId } = req.body;
+
+        const { containsPhoneNumber } = require('../utils/phoneFilter');
+        if (text && containsPhoneNumber(text)) {
+            return res.status(400).json({ message: "Sharing phone numbers is not allowed." });
+        }
 
         if (!text || !text.trim()) {
             return res.status(400).json({ message: "Comment text is required" });

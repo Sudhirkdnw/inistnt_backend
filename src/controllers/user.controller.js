@@ -87,6 +87,11 @@ async function getUserProfile(req, res) {
 async function updateProfile(req, res) {
     try {
         const { username, fullName, bio, avatar, isPrivate, email } = req.body;
+
+        const { containsPhoneNumber } = require("../utils/phoneFilter");
+        if (bio && containsPhoneNumber(bio)) {
+            return res.status(400).json({ message: "Sharing phone numbers is not allowed in bio." });
+        }
         const user = await userModel.findById(req.user._id).select("+password");
 
         if (!user) return res.status(404).json({ message: "User not found" });
