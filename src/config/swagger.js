@@ -5,12 +5,12 @@ const options = {
     definition: {
         openapi: '3.0.0',
         info: {
-            title: 'Inistnt Enterprise API Documentation',
+            title: 'Hykee Enterprise API Documentation',
             version: '1.0.0',
-            description: 'API Documentation for Inistnt College Confession & Dating Platform.',
+            description: 'API Documentation for Hykee College Confession & Dating Platform.',
             contact: {
                 name: 'API Support',
-                email: 'support@inistnt.in'
+                email: 'support@hykee.in'
             }
         },
         servers: [

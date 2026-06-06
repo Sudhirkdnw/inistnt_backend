@@ -285,7 +285,7 @@ const startServer = async () => {
     }
 
     server.listen(PORT, () => {
-        InfrastructureLogger.server("SUCCESS", `Inistnt Enterprise Node Server is listening on port ${PORT} (Enterprise Cluster Mode)`);
+        InfrastructureLogger.server("SUCCESS", `Hykee Enterprise Node Server is listening on port ${PORT} (Enterprise Cluster Mode)`);
     });
 };
 

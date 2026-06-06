@@ -24,7 +24,7 @@ async function sendEmailWithTemplate(to, templateName, variables = {}) {
         if (!template) {
             console.warn(`⚠️ legacy sendEmailWithTemplate: Template '${templateName}' not found in database. Falling back to plain text serialization.`);
             const plainText = Object.entries(variables).map(([k, v]) => `${k}: ${v}`).join('\n');
-            return sendEmail(to, `Message from ${getSetting('platform_name', 'Inistnt')}`, plainText);
+            return sendEmail(to, `Message from ${getSetting('platform_name', 'Hykee')}`, plainText);
         }
 
         let html = template.content;
@@ -38,8 +38,8 @@ async function sendEmailWithTemplate(to, templateName, variables = {}) {
         });
 
         // Substitute platform-wide system variables
-        html = html.replace(/{{platform_name}}/g, getSetting('platform_name', 'Inistnt'));
-        html = html.replace(/{{support_email}}/g, getSetting('support_email', 'support@inistnt.in'));
+        html = html.replace(/{{platform_name}}/g, getSetting('platform_name', 'Hykee'));
+        html = html.replace(/{{support_email}}/g, getSetting('support_email', 'support@hykee.in'));
 
         console.log(`📨 [Legacy Mailer Utility] Template '${templateName}' successfully parsed. Transmitting...`);
         return sendGeneralEmail(to, subject, html, null, templateName);

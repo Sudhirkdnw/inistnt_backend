@@ -129,10 +129,10 @@ async function renderDbTemplate(templateName, variables) {
         const template = await EmailTemplate.findOne({ name: templateName });
         if (!template) return null;
 
-        const platformName = getSetting("platform_name", "Inistnt");
-        const supportEmail = getSetting("support_email", "support@inistnt.in");
+        const platformName = getSetting("platform_name", "Hykee");
+        const supportEmail = getSetting("support_email", "support@hykee.in");
         const supportPhone = getSetting("support_phone", "+91 70707 99200");
-        const companyName = getSetting("company_name", "Inistnt");
+        const companyName = getSetting("company_name", "Hykee");
         const companyAddress = getSetting("company_address", "Greater Noida");
         const platformDescription = getSetting("platform_description", "College Confession & Dating Platform");
         const dateFormat = getSetting("date_format", "MMM DD, YYYY");
@@ -180,7 +180,7 @@ async function renderDbTemplate(templateName, variables) {
  * Dispatches a premium verification OTP email.
  */
 async function sendVerificationEmail(email, code, username = "") {
-    const platformName = getSetting("platform_name", "Inistnt");
+    const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
     const dbTemplate = await renderDbTemplate("otp_verification", {
@@ -214,7 +214,7 @@ async function sendVerificationEmail(email, code, username = "") {
  * Dispatches standard HTML emails wrapped in the premium master layout.
  */
 async function sendGeneralEmail(to, subject, bodyHtml, text = "", templateName = "general") {
-    const platformName = getSetting("platform_name", "Inistnt");
+    const platformName = getSetting("platform_name", "Hykee");
     const cleanSubject = clientModule.sanitizeEmailInput(subject);
 
     let htmlBody = bodyHtml;
@@ -237,7 +237,7 @@ async function sendGeneralEmail(to, subject, bodyHtml, text = "", templateName =
  * Dispatches a premium welcome email upon successful verification.
  */
 async function sendWelcomeEmail(email, username = "") {
-    const platformName = getSetting("platform_name", "Inistnt");
+    const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
     const dbTemplate = await renderDbTemplate("welcome_email", {
@@ -266,7 +266,7 @@ async function sendWelcomeEmail(email, username = "") {
  * Dispatches an urgent security notification.
  */
 async function sendSecurityAlert(email, username = "", alertDetails = {}) {
-    const platformName = getSetting("platform_name", "Inistnt");
+    const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
     const dbTemplate = await renderDbTemplate("security_alert", {
@@ -299,7 +299,7 @@ async function sendSecurityAlert(email, username = "", alertDetails = {}) {
  * Dispatches an account approval email to the verified student.
  */
 async function sendApprovalEmail(email, username = "") {
-    const platformName = getSetting("platform_name", "Inistnt");
+    const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
     const dbTemplate = await renderDbTemplate("account_approval", {
@@ -339,7 +339,7 @@ async function sendApprovalEmail(email, username = "") {
  * Dispatches a polite account rejection email.
  */
 async function sendRejectionEmail(email, username = "", reason = "") {
-    const platformName = getSetting("platform_name", "Inistnt");
+    const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
     const dbTemplate = await renderDbTemplate("account_rejection", {
@@ -381,7 +381,7 @@ async function sendRejectionEmail(email, username = "", reason = "") {
  * Dispatches a password reset email.
  */
 async function sendPasswordResetEmail(email, resetUrl, username = "") {
-    const platformName = getSetting("platform_name", "Inistnt");
+    const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
     const dbTemplate = await renderDbTemplate("password_reset", {
@@ -412,7 +412,7 @@ async function sendPasswordResetEmail(email, resetUrl, username = "") {
  * Dispatches a premium billing confirmation/receipt email.
  */
 async function sendBillingEmail(email, username = "", invoiceDetails = {}) {
-    const platformName = getSetting("platform_name", "Inistnt");
+    const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
     const dbTemplate = await renderDbTemplate("billing_receipt", {

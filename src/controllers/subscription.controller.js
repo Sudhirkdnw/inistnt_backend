@@ -291,7 +291,7 @@ async function renderRazorpayCheckout(req, res) {
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inistnt Premium Checkout</title>
+    <title>Hykee Premium Checkout</title>
     <style>
         body {
             background-color: #121212;
@@ -363,7 +363,7 @@ async function renderRazorpayCheckout(req, res) {
         <div class="loader" id="loader"></div>
         <h2 id="status">Redirecting to Razorpay...</h2>
         <p id="sub-status">Please wait while we initialize the secure payment screen. Do not refresh or close this page.</p>
-        <a href="inistnt://premium" class="btn" id="app-btn" style="display:none;">Back to App</a>
+        <a href="hykee://premium" class="btn" id="app-btn" style="display:none;">Back to App</a>
     </div>
 
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
@@ -371,7 +371,7 @@ async function renderRazorpayCheckout(req, res) {
         const options = {
             "key": "${keyId}",
             "subscription_id": "${subscriptionId}",
-            "name": "Inistnt Premium",
+            "name": "Hykee Premium",
             "description": "${plan.name} Membership",
             "image": "https://raw.githubusercontent.com/Sudhirkdnw/social_mini/main/Inistnt/assets/icon.png",
             "handler": function (response) {
@@ -401,13 +401,13 @@ async function renderRazorpayCheckout(req, res) {
                     if (data.subscription) {
                         document.getElementById("loader").style.display = "none";
                         document.getElementById("status").innerText = "Payment Verified! 🎉";
-                        document.getElementById("sub-status").innerText = "Your premium membership is active. You will be redirected back to the Inistnt app shortly.";
+                        document.getElementById("sub-status").innerText = "Your premium membership is active. You will be redirected back to the Hykee app shortly.";
                         
                         setTimeout(() => {
-                            window.location.href = "inistnt://premium/success";
+                            window.location.href = "hykee://premium/success";
                         }, 2000);
                         
-                        document.getElementById("app-btn").href = "inistnt://premium/success";
+                        document.getElementById("app-btn").href = "hykee://premium/success";
                         document.getElementById("app-btn").innerText = "Open App";
                         document.getElementById("app-btn").style.display = "inline-block";
                     } else {
@@ -419,7 +419,7 @@ async function renderRazorpayCheckout(req, res) {
                     document.getElementById("status").innerText = "Verification Failed ❌";
                     document.getElementById("sub-status").innerText = err.message || "An error occurred while confirming your payment. Please contact support.";
                     
-                    document.getElementById("app-btn").href = "inistnt://premium";
+                    document.getElementById("app-btn").href = "hykee://premium";
                     document.getElementById("app-btn").innerText = "Back to App";
                     document.getElementById("app-btn").style.display = "inline-block";
                 });
@@ -439,10 +439,10 @@ async function renderRazorpayCheckout(req, res) {
                     document.getElementById("sub-status").innerText = "You cancelled the payment. You can try again from the app.";
                     
                     setTimeout(() => {
-                        window.location.href = "inistnt://premium/cancel";
+                        window.location.href = "hykee://premium/cancel";
                     }, 1500);
 
-                    document.getElementById("app-btn").href = "inistnt://premium/cancel";
+                    document.getElementById("app-btn").href = "hykee://premium/cancel";
                     document.getElementById("app-btn").innerText = "Back to App";
                     document.getElementById("app-btn").style.display = "inline-block";
                 }
@@ -483,7 +483,7 @@ async function renderCashfreeCheckout(req, res) {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Inistnt Premium - Cashfree Checkout</title>
+    <title>Hykee Premium - Cashfree Checkout</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body {
@@ -704,12 +704,12 @@ async function renderCashfreeVerify(req, res) {
 <body>
     <div class="container">
         <h2>Payment Verified! 🎉</h2>
-        <p>Your premium membership is active. You will be redirected back to the Inistnt app shortly.</p>
-        <a href="inistnt://premium/success" class="btn">Open App</a>
+        <p>Your premium membership is active. You will be redirected back to the Hykee app shortly.</p>
+        <a href="hykee://premium/success" class="btn">Open App</a>
     </div>
     <script>
         setTimeout(() => {
-            window.location.href = "inistnt://premium/success";
+            window.location.href = "hykee://premium/success";
         }, 2000);
     </script>
 </body>
@@ -770,11 +770,11 @@ async function renderCashfreeVerify(req, res) {
     <div class="container">
         <h2>Payment Verification Failed ❌</h2>
         <p>${err.message || 'An error occurred while confirming your payment.'}</p>
-        <a href="inistnt://premium/cancel" class="btn">Back to App</a>
+        <a href="hykee://premium/cancel" class="btn">Back to App</a>
     </div>
     <script>
         setTimeout(() => {
-            window.location.href = "inistnt://premium/cancel";
+            window.location.href = "hykee://premium/cancel";
         }, 3000);
     </script>
 </body>

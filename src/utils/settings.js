@@ -8,11 +8,11 @@ let cachedSettings = {};
 const syncSettings = async () => {
     try {
         const defaults = [
-            { key: 'platform_name', value: 'Inistnt', description: 'The public name of the platform', category: 'General' },
+            { key: 'platform_name', value: 'Hykee', description: 'The public name of the platform', category: 'General' },
             { key: 'platform_description', value: 'College Confession & Dating Platform', description: 'SEO description of the site', category: 'General' },
-            { key: 'support_email', value: 'support@inistnt.in', description: 'Official contact email for users', category: 'General' },
+            { key: 'support_email', value: 'support@hykee.in', description: 'Official contact email for users', category: 'General' },
             { key: 'support_phone', value: '+91 70707 99200', description: 'Support contact number', category: 'General' },
-            { key: 'company_name', value: 'Inistnt', description: 'Legal company name', category: 'General' },
+            { key: 'company_name', value: 'Hykee', description: 'Legal company name', category: 'General' },
             { key: 'company_address', value: 'Greater Noida', description: 'Business address', category: 'General' },
             { key: 'default_language', value: 'en', description: 'System default language', category: 'General' },
             { key: 'default_currency', value: 'IN', description: 'Platform currency code', category: 'General' },
@@ -36,7 +36,7 @@ const syncSettings = async () => {
             { key: 'max_confession_length', value: 2000, category: 'Content' },
             { key: 'confession_approval_mode', value: false, category: 'Content' },
             { key: 'homepage_banner_text', value: 'The safest place for your secrets.', category: 'Content' },
-            { key: 'footer_text', value: '© 2026 Inistnt. All rights reserved.', category: 'Content' },
+            { key: 'footer_text', value: '© 2026 Hykee. All rights reserved.', category: 'Content' },
             { key: 'anonymous_chat', value: true, category: 'Features' },
             { key: 'dating_module', value: true, category: 'Features' },
             { key: 'min_dating_photos', value: 1, category: 'Features' },
@@ -45,7 +45,7 @@ const syncSettings = async () => {
             { key: 'accent_color', value: '#0095f6', category: 'Branding' },
             { key: 'secondary_color', value: '#1a1a1a', category: 'Branding' },
             { key: 'dark_mode_default', value: true, category: 'Branding' },
-
+ 
             // Mail Settings
             { key: 'mail_protocol', value: 'smtp', description: 'Email delivery protocol (smtp/sendmail)', category: 'Mail' },
             { key: 'mail_host', value: 'smtp.gmail.com', description: 'SMTP server host', category: 'Mail' },
@@ -53,11 +53,11 @@ const syncSettings = async () => {
             { key: 'mail_encryption', value: 'tls', description: 'Encryption method (tls/ssl/none)', category: 'Mail' },
             { key: 'mail_username', value: '', description: 'SMTP username/email', category: 'Mail' },
             { key: 'mail_password', value: '', description: 'SMTP password (stored encrypted)', category: 'Mail' },
-            { key: 'mail_from_address', value: 'support@inistnt.in', description: 'Sender email address', category: 'Mail' },
-            { key: 'mail_from_name', value: 'Inistnt', description: 'Sender display name', category: 'Mail' },
-            { key: 'mail_reply_to', value: 'support@inistnt.in', description: 'Reply-to email address', category: 'Mail' }
+            { key: 'mail_from_address', value: 'support@hykee.in', description: 'Sender email address', category: 'Mail' },
+            { key: 'mail_from_name', value: 'Hykee', description: 'Sender display name', category: 'Mail' },
+            { key: 'mail_reply_to', value: 'support@hykee.in', description: 'Reply-to email address', category: 'Mail' }
         ];
-
+ 
         // Bulk upsert logic
         const bulkOps = defaults.map(d => ({
             updateOne: {
@@ -69,33 +69,41 @@ const syncSettings = async () => {
                 upsert: true
             }
         }));
-
+ 
         await Setting.bulkWrite(bulkOps);
         console.log("✅ System configuration synchronized with defaults");
-
+ 
         // Auto-correct outdated values in database settings collection to prevent unverified domain delivery failures
         const mailFromAddressRes = await Setting.updateMany(
-            { key: { $in: ["mail_from_address", "mail_reply_to", "support_email"] }, value: /socialmini\.edu/ },
-            { $set: { value: "support@inistnt.in" } }
+            { key: { $in: ["mail_from_address", "mail_reply_to", "support_email"] }, value: { $in: [/socialmini\.edu/, /inistnt\.in/] } },
+            { $set: { value: "support@hykee.in" } }
         );
         if (mailFromAddressRes.modifiedCount > 0) {
-            console.log(`[Migration] Updated ${mailFromAddressRes.modifiedCount} mail settings with old domain 'socialmini.edu' to 'support@inistnt.in'`);
+            console.log(`[Migration] Updated ${mailFromAddressRes.modifiedCount} mail settings with old domains to 'support@hykee.in'`);
         }
-
+ 
         const platformNameRes = await Setting.updateMany(
-            { key: { $in: ["platform_name", "company_name"] }, value: { $in: ["Social Mini", "Zynk", "SocialMini", "social_mini"] } },
-            { $set: { value: "Inistnt" } }
+            { key: { $in: ["platform_name", "company_name"] }, value: { $in: ["Social Mini", "Zynk", "SocialMini", "social_mini", "Inistnt"] } },
+            { $set: { value: "Hykee" } }
         );
         if (platformNameRes.modifiedCount > 0) {
-            console.log(`[Migration] Updated ${platformNameRes.modifiedCount} platform/company name settings to 'Inistnt'`);
+            console.log(`[Migration] Updated ${platformNameRes.modifiedCount} platform/company name settings to 'Hykee'`);
         }
-
+ 
         const footerTextRes = await Setting.updateMany(
-            { key: "footer_text", value: /Social Mini|Zynk/ },
-            { $set: { value: "© 2026 Inistnt. All rights reserved." } }
+            { key: "footer_text", value: /Social Mini|Zynk|Inistnt/ },
+            { $set: { value: "© 2026 Hykee. All rights reserved." } }
         );
         if (footerTextRes.modifiedCount > 0) {
-            console.log(`[Migration] Updated footer text to use 'Inistnt'`);
+            console.log(`[Migration] Updated footer text to use 'Hykee'`);
+        }
+        
+        const mailFromNameRes = await Setting.updateMany(
+            { key: "mail_from_name", value: "Inistnt" },
+            { $set: { value: "Hykee" } }
+        );
+        if (mailFromNameRes.modifiedCount > 0) {
+            console.log(`[Migration] Updated mail sender name setting to 'Hykee'`);
         }
     } catch (err) {
         console.error("❌ Failed to sync settings:", err.message);

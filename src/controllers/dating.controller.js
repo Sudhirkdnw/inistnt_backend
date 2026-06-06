@@ -348,7 +348,7 @@ async function uploadDatingPhoto(req, res) {
         }
 
         const photoUrl = await uploadImage(req.file.buffer, {
-            folder: 'inistnt/dating',
+            folder: 'hykee/dating',
             transformation: [
                 { width: 1000, height: 1200, crop: 'fill', gravity: 'auto' } // High quality portrait crop
             ]

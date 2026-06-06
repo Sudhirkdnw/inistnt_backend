@@ -21,7 +21,7 @@ function readMailEnv() {
         EMAIL_USER: config.EMAIL_USER || '',
         EMAIL_PASS: config.EMAIL_PASS || '',
         EMAIL_FROM: config.EMAIL_FROM || '',
-        EMAIL_FROM_NAME: config.EMAIL_FROM_NAME || 'Inistnt',
+        EMAIL_FROM_NAME: config.EMAIL_FROM_NAME || 'Hykee',
         RESEND_API_KEY: config.RESEND_API_KEY || ''
     };
 }

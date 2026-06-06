@@ -52,22 +52,22 @@ describe("📧 Enterprise Email System Unit Tests", () => {
 
     describe("2. Premium Templates (templates.js)", () => {
         it("should render OTP template containing the verification code", () => {
-            const rendered = templatesModule.renderOtpVerification("987654", "Sudhir", "Inistnt");
+            const rendered = templatesModule.renderOtpVerification("987654", "Sudhir", "Hykee");
             expect(rendered).toContain("987654");
             expect(rendered).toContain("Sudhir");
-            expect(rendered).toContain("Inistnt");
+            expect(rendered).toContain("Hykee");
             expect(rendered).toContain("Verify Your Email");
         });
 
         it("should render Password Reset containing the absolute URL", () => {
             const url = "http://localhost:5000/reset/token123";
-            const rendered = templatesModule.renderPasswordReset(url, "Sudhir", "Inistnt");
+            const rendered = templatesModule.renderPasswordReset(url, "Sudhir", "Hykee");
             expect(rendered).toContain(url);
             expect(rendered).toContain("Reset My Password");
         });
 
         it("should render Welcome layout containing greeting", () => {
-            const rendered = templatesModule.renderWelcomeEmail("Sudhir", "Inistnt");
+            const rendered = templatesModule.renderWelcomeEmail("Sudhir", "Hykee");
             expect(rendered).toContain("Welcome to the Club, Sudhir!");
         });
 
@@ -78,7 +78,7 @@ describe("📧 Enterprise Email System Unit Tests", () => {
                 time: "2026-05-18 23:45",
                 action: "Password Change Attempt"
             };
-            const rendered = templatesModule.renderSecurityAlert(alertDetails, "Sudhir", "Inistnt");
+            const rendered = templatesModule.renderSecurityAlert(alertDetails, "Sudhir", "Hykee");
             expect(rendered).toContain("192.168.1.50");
             expect(rendered).toContain("iPhone");
             expect(rendered).toContain("Password Change Attempt");

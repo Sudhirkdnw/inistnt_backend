@@ -42,11 +42,11 @@ class CashfreeGateway extends PaymentGateway {
                     customer_details: {
                         customer_id: user._id.toString(),
                         customer_name: user.fullName || user.username || "Student",
-                        customer_email: user.email || user.collegeEmail || "student@inistnt.in",
+                        customer_email: user.email || user.collegeEmail || "student@hykee.in",
                         customer_phone: "9999999999" // Cashfree requires a customer phone, fallback to dummy
                     },
                     order_meta: {
-                        return_url: `${(process.env.CLIENT_URL || "https://inistnt.in").replace(/^http:\/\//i, "https://")}/premium/success?order_id={order_id}`
+                        return_url: `${(process.env.CLIENT_URL || "https://hykee.in").replace(/^http:\/\//i, "https://")}/premium/success?order_id={order_id}`
                     }
                 },
                 {

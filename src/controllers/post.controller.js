@@ -15,7 +15,7 @@ const createPost = async (req, res) => {
         let image = null;
         if (req.file) {
             // Upload buffer to Cloudinary → get CDN URL
-            image = await uploadImage(req.file.buffer, { folder: 'inistnt/posts' });
+            image = await uploadImage(req.file.buffer, { folder: 'hykee/posts' });
         }
 
         const post = await postModel.create({

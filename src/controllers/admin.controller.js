@@ -1040,7 +1040,7 @@ const getMailConfig = async (req, res) => {
             EMAIL_USER: getSetting('mail_username', ''),
             EMAIL_PASS: getSetting('mail_password', ''),
             EMAIL_FROM: getSetting('mail_from_address', ''),
-            EMAIL_FROM_NAME: getSetting('mail_from_name', 'Inistnt'),
+            EMAIL_FROM_NAME: getSetting('mail_from_name', 'Hykee'),
             RESEND_API_KEY: getSetting('resend_api_key', '') || process.env.RESEND_API_KEY || ''
         };
 

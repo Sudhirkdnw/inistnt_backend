@@ -6,7 +6,7 @@ const { getSetting } = require("../../utils/settings");
  */
 function getMasterLayout(title, contentHtml, platformName) {
     const currentYear = new Date().getFullYear();
-    const supportEmail = getSetting("support_email", "support@inistnt.in");
+    const supportEmail = getSetting("support_email", "support@hykee.in");
 
     return `
     <!DOCTYPE html>

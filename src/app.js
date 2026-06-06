@@ -138,7 +138,7 @@ if (process.env.NODE_ENV === "production") {
         } else {
             res.status(200).json({
                 status: "success",
-                message: "Inistnt API Server is running in production mode.",
+                message: "Hykee API Server is running in production mode.",
                 timestamp: new Date().toISOString()
             });
         }
