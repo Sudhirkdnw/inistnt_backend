@@ -30,7 +30,10 @@ process.on('unhandledRejection', (reason, promise) => {
 const ALLOWED_ORIGINS = [
     process.env.CLIENT_URL,
     process.env.ADMIN_URL,
-    ...(process.env.CORS_ALLOWED_ORIGINS ? process.env.CORS_ALLOWED_ORIGINS.split(',') : [])
+    ...(process.env.CORS_ALLOWED_ORIGINS ? process.env.CORS_ALLOWED_ORIGINS.split(',') : []),
+    'https://hykee.in',
+    'https://www.hykee.in',
+    'https://admin.hykee.in'
 ].filter(Boolean).map(o => o.trim());
 
 const io = new Server(server, {
