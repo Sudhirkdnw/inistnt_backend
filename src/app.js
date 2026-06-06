@@ -17,6 +17,7 @@ const reportRoutes = require('./routes/report.routes');
 const monitoringRoutes = require('./routes/monitoring.routes');
 const collegeRoutes = require('./routes/college.routes');
 const subscriptionRoutes = require('./routes/subscription.routes');
+const dashboardRoutes = require('./routes/dashboard.routes');
 const cors = require('cors');
 
 const app = express();
@@ -112,8 +113,8 @@ setupSwagger(app);
 app.use("/api/auth", rateLimiter({ windowMs: 15 * 60 * 1000, max: 100, prefix: 'auth' }), authRoutes);
 app.use("/api/confessions", rateLimiter({ windowMs: 60 * 1000, max: 150, prefix: 'confessions' }), confessionRoutes);
 app.use("/api/users", rateLimiter({ windowMs: 60 * 1000, max: 100, prefix: 'users' }), userRoutes);
-app.use("/api/stories", storyRoutes);
-app.use("/api/notifications", notificationRoutes);
+app.use("/api/stories", rateLimiter({ windowMs: 60 * 1000, max: 60, prefix: 'stories' }), storyRoutes);
+app.use("/api/notifications", rateLimiter({ windowMs: 60 * 1000, max: 60, prefix: 'notifs' }), notificationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/chat", rateLimiter({ windowMs: 60 * 1000, max: 200, prefix: 'chat' }), chatRoutes);
@@ -123,6 +124,7 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/monitoring", monitoringRoutes);
 app.use("/api/colleges", collegeRoutes);
+app.use("/api/dashboard", rateLimiter({ windowMs: 60 * 1000, max: 60, prefix: 'dashboard' }), dashboardRoutes);
 
 app.get("/api/health", (req, res) => {
     res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });

@@ -560,6 +560,97 @@ async function contactAdmin(req, res) {
     }
 }
 
+async function createGroupConversation(req, res) {
+    try {
+        const { name, participantIds } = req.body;
+        const currentUserId = req.user._id;
+
+        if (!name || !name.trim()) {
+            return res.status(400).json({ message: "Group name is required" });
+        }
+
+        if (!participantIds || !Array.isArray(participantIds) || participantIds.length === 0) {
+            return res.status(400).json({ message: "At least one participant is required" });
+        }
+
+        // Include current user in group participants list
+        const uniqueParticipants = Array.from(new Set([
+            currentUserId.toString(),
+            ...participantIds.map(id => id.toString())
+        ]));
+
+        let conversation = await Conversation.create({
+            type: "group",
+            name: name.trim(),
+            participants: uniqueParticipants,
+            admin: currentUserId
+        });
+
+        conversation = await conversation.populate("participants", "username fullName avatar");
+
+        // Emit conversation-created socket event to notify participants
+        const io = req.app.get("io");
+        if (io) {
+            uniqueParticipants.forEach(pid => {
+                io.to(pid).emit("conversation-created", conversation);
+            });
+        }
+
+        res.status(201).json(conversation);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
+
+async function exitGroupConversation(req, res) {
+    try {
+        const { id } = req.params;
+        const currentUserId = req.user._id;
+
+        const conversation = await Conversation.findById(id);
+        if (!conversation) {
+            return res.status(404).json({ message: "Group not found" });
+        }
+
+        if (conversation.type !== "group") {
+            return res.status(400).json({ message: "Cannot exit a direct message" });
+        }
+
+        const isParticipant = conversation.participants.includes(currentUserId);
+        if (!isParticipant) {
+            return res.status(400).json({ message: "Not a participant of this group" });
+        }
+
+        conversation.participants = conversation.participants.filter(
+            p => p.toString() !== currentUserId.toString()
+        );
+
+        if (conversation.participants.length === 0) {
+            await Message.deleteMany({ conversation: id });
+            await conversation.deleteOne();
+            return res.status(200).json({ message: "Exited group. Group deleted because it was empty." });
+        }
+
+        if (conversation.admin && conversation.admin.toString() === currentUserId.toString()) {
+            conversation.admin = conversation.participants[0];
+        }
+
+        await conversation.save();
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(id.toString()).emit("user-exited-group", { conversationId: id, userId: currentUserId });
+            conversation.participants.forEach(pid => {
+                io.to(pid.toString()).emit("conversation-updated", conversation);
+            });
+        }
+
+        res.status(200).json({ message: "Successfully exited group" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
+
 module.exports = {
     getConversations,
     getOrCreateDM,
@@ -570,6 +661,8 @@ module.exports = {
     deleteConversation,
     likeMessage,
     markAsRead,
-    contactAdmin
+    contactAdmin,
+    createGroupConversation,
+    exitGroupConversation
 };
 

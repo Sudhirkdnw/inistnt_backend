@@ -385,10 +385,10 @@ async function loginController(req, res) {
 
         user.lastIp = metadata.ip;
         user.lastActive = new Date();
+        // Cap loginHistory at 20 entries atomically
         user.loginHistory.push({ ...metadata, isSuspicious });
-
-        if (user.loginHistory.length > 50) {
-            user.loginHistory.shift();
+        if (user.loginHistory.length > 20) {
+            user.loginHistory = user.loginHistory.slice(-20);
         }
 
         await user.save();
@@ -611,7 +611,9 @@ async function verifyAdminOtpController(req, res) {
         user.lastIp = metadata.ip;
         user.lastActive = new Date();
         user.loginHistory.push({ ...metadata, isSuspicious });
-        await user.save();
+        if (user.loginHistory.length > 20) {
+            user.loginHistory = user.loginHistory.slice(-20);
+        }
 
         // Sign new short-lived Access Token and rotating Refresh Token
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });

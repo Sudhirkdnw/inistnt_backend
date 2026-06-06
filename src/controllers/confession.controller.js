@@ -750,6 +750,7 @@ const votePollOption = async (req, res) => {
 /**
  * Strip user identity from anonymous confessions.
  * The original poster can still see their own identity.
+ * Also converts likes[] array -> likesCount + isLikedByMe (never sends full array to client)
  */
 function sanitizeConfession(confession, currentUserId) {
     const obj = confession.toObject ? confession.toObject() : { ...confession };
@@ -762,6 +763,14 @@ function sanitizeConfession(confession, currentUserId) {
             avatar: ""
         };
     }
+
+    // Convert full likes array to scalar fields — never send raw array to clients
+    const likesArr = obj.likes || [];
+    obj.likesCount = likesArr.length;
+    obj.isLikedByMe = currentUserId
+        ? likesArr.some(id => id?.toString() === currentUserId?.toString())
+        : false;
+    delete obj.likes; // Remove the potentially huge array
 
     if (obj.poll && obj.poll.options && obj.poll.options.length > 0) {
         const totalVotes = obj.poll.options.reduce((sum, opt) => sum + (opt.votes ? opt.votes.length : 0), 0);
@@ -782,10 +791,71 @@ function sanitizeConfession(confession, currentUserId) {
     return obj;
 }
 
+// GET /api/confessions/hot — Top posts globally (all universities) sorted by hotScore
+// Uses MongoDB aggregation (server-side sort) + Redis cache (5 min TTL)
+const getHotPosts = async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+        const page  = Math.max(parseInt(req.query.page)  || 1, 1);
+        const skip  = (page - 1) * limit;
+
+        const cacheKey = `hot:page${page}:limit${limit}`;
+        const result = await cache.getOrSet(cacheKey, 300, async () => {
+            const [agg] = await confessionModel.aggregate([
+                { $match: { isHidden: false } },
+                { $addFields: {
+                    _hotScore: {
+                        $add: [
+                            { $size: { $ifNull: ['$likes', []] } },
+                            { $multiply: [{ $ifNull: ['$commentCount', 0] }, 1.5] }
+                        ]
+                    }
+                }},
+                { $sort: { _hotScore: -1 } },
+                { $facet: {
+                    data: [
+                        { $skip: skip },
+                        { $limit: limit },
+                        { $lookup: {
+                            from: 'users',
+                            localField: 'user',
+                            foreignField: '_id',
+                            pipeline: [{ $project: { username: 1, fullName: 1, avatar: 1 } }],
+                            as: 'userArr'
+                        }},
+                        { $addFields: { user: { $arrayElemAt: ['$userArr', 0] } } },
+                        { $project: { userArr: 0 } }
+                    ],
+                    total: [{ $count: 'count' }]
+                }}
+            ]);
+
+            return {
+                data: agg?.data || [],
+                total: agg?.total?.[0]?.count || 0
+            };
+        });
+
+        const sanitized = result.data.map(c => sanitizeConfession(c, req.user._id));
+
+        res.status(200).json({
+            confessions: sanitized,
+            page,
+            hasMore: skip + limit < result.total,
+            total: result.total
+        });
+    } catch (error) {
+        console.error('getHotPosts error:', error);
+        res.status(500).json({ message: 'Error fetching hot posts' });
+    }
+};
+
+
 module.exports = {
     createConfession,
     getFeed,
     getExplore,
+    getHotPosts,
     getConfession,
     deleteConfession,
     toggleLike,

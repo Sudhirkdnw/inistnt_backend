@@ -87,6 +87,7 @@ confessionSchema.index({ confessionText: 'text' });
 confessionSchema.index({ isNSFW: 1, isHidden: 1 });
 confessionSchema.index({ reports: 1 }, { sparse: true });
 confessionSchema.index({ createdAt: -1 }); // Added for analytics
+confessionSchema.index({ isHidden: 1, commentCount: -1 }); // For hot posts aggregation sort
 
 const confessionModel = mongoose.model("confession", confessionSchema);
 

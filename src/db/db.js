@@ -6,12 +6,13 @@ const MONGO_URI = process.env.MONGO_URI;
 function connectDB() {
     mongoose.connect(MONGO_URI, {
         serverSelectionTimeoutMS: 10000,
-        maxPoolSize: 50,
+        maxPoolSize: 100,   // Supports 10K+ concurrent users
+        minPoolSize: 10,
         retryWrites: true,
         w: 'majority',
     })
         .then(() => {
-            InfrastructureLogger.database("SUCCESS", "MongoDB Atlas Connected successfully", { maxPoolSize: 50 });
+            InfrastructureLogger.database("SUCCESS", "MongoDB Atlas Connected successfully", { maxPoolSize: 100 });
             
             const db = mongoose.connection.db;
 

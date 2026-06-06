@@ -114,26 +114,28 @@ io.on("connection", (socket) => {
         const uid = String(userId);
         
         try {
-            // Per-user connection limit: max 3 connections
             const MAX_CONNECTIONS_PER_USER = parseInt(process.env.MAX_CONNECTIONS_PER_USER) || 3;
             
-            // Get all sockets in the user's room (across all nodes if using Redis adapter)
-            const socketsInRoom = await io.in(uid).fetchSockets();
-            
-            // If they exceed the limit, disconnect the oldest
-            if (socketsInRoom.length >= MAX_CONNECTIONS_PER_USER) {
-                const countToDisconnect = socketsInRoom.length - MAX_CONNECTIONS_PER_USER + 1;
-                for (let i = 0; i < countToDisconnect; i++) {
-                    const s = socketsInRoom[i];
-                    if (s.id !== socket.id) {
-                        InfrastructureLogger.socket("INFO", `Disconnecting oldest socket ${s.id} for user ${uid} to enforce limit.`);
-                        s.emit("forced_disconnect", { reason: "Too many concurrent connections." });
-                        s.disconnect(true);
-                    }
+            if (redisClient) {
+                // Use Redis INCR counter — O(1), no fetchSockets() round-trip per connection
+                const connKey = `socket_conns:${uid}`;
+                const count = await redisClient.incr(connKey);
+                await redisClient.expire(connKey, 86400); // auto-expire in 24h
+
+                if (count > MAX_CONNECTIONS_PER_USER) {
+                    await redisClient.decr(connKey); // revert the increment
+                    socket.emit('forced_disconnect', { reason: 'Too many concurrent connections.' });
+                    socket.disconnect(true);
+                    return;
                 }
+
+                // Decrement counter on disconnect
+                socket.once('disconnect', async () => {
+                    try { await redisClient.decr(connKey); } catch (_) {}
+                });
             }
         } catch (err) {
-            console.error("Error enforcing socket connection limit:", err);
+            console.error('Error enforcing socket connection limit:', err);
         }
 
         socket.join(uid);

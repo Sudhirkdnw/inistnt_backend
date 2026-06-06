@@ -4,7 +4,7 @@ const cacheMiddleware = require('../middlewares/cacheMiddleware');
 const router = express.Router();
 
 const {
-    createConfession, getFeed, getExplore, getConfession,
+    createConfession, getFeed, getExplore, getHotPosts, getConfession,
     deleteConfession, toggleLike, addComment, deleteComment,
     getComments, getReplies, toggleCommentLike,
     reportConfession, getUserConfessions, votePollOption
@@ -13,6 +13,7 @@ const {
 router.post('/', authMiddleware, createConfession);
 router.get('/feed', authMiddleware, cacheMiddleware(30), getFeed);
 router.get('/explore', authMiddleware, getExplore); // internal cache is used here
+router.get('/hot', authMiddleware, getHotPosts);    // global hot/trending — no college filter
 router.get('/user/:userId', authMiddleware, cacheMiddleware(60), getUserConfessions);
 router.get('/:id', authMiddleware, cacheMiddleware(60), getConfession);
 router.delete('/:id', authMiddleware, deleteConfession);
