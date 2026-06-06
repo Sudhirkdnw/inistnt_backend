@@ -721,6 +721,15 @@ const updateSetting = async (req, res) => {
             finalValue = encrypt(value);
         }
 
+        // Auto-delete old asset from Cloudinary when updating image configurations
+        if (['app_logo', 'favicon', 'splash_day_url', 'splash_night_url'].includes(key)) {
+            const existingSetting = await settingsModel.findOne({ key });
+            if (existingSetting && existingSetting.value && existingSetting.value !== value) {
+                const { deleteImage } = require("../utils/cloudinary");
+                await deleteImage(existingSetting.value);
+            }
+        }
+
         const setting = await settingsModel.findOneAndUpdate(
             { key },
             { value: finalValue },

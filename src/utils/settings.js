@@ -45,6 +45,8 @@ const syncSettings = async () => {
             { key: 'accent_color', value: '#0095f6', category: 'Branding' },
             { key: 'secondary_color', value: '#1a1a1a', category: 'Branding' },
             { key: 'dark_mode_default', value: true, category: 'Branding' },
+            { key: 'splash_day_url', value: '', category: 'Branding', description: 'URL for day splash screen image' },
+            { key: 'splash_night_url', value: '', category: 'Branding', description: 'URL for night splash screen image' },
  
             // Mail Settings
             { key: 'mail_protocol', value: 'smtp', description: 'Email delivery protocol (smtp/sendmail)', category: 'Mail' },

@@ -124,20 +124,38 @@ const uploadDatingPhoto = async (buffer, mimetype) => {
 const deleteImage = async (imageUrl) => {
     if (!isConfigured() || !imageUrl || imageUrl.startsWith('data:')) return;
     try {
-        const parts = imageUrl.split('/');
-        const filename = parts[parts.length - 1].split('.')[0];
-        // For subfolders, we need the folder name too
-        const folderIndex = parts.indexOf('hykee') !== -1 
-            ? parts.indexOf('hykee') 
-            : parts.indexOf('inistnt') !== -1 
-                ? parts.indexOf('inistnt') 
-                : parts.indexOf('friendzone');
-        if (folderIndex !== -1) {
-            const publicId = parts.slice(folderIndex).join('/').split('.')[0];
-            await cloudinary.uploader.destroy(publicId);
+        const uploadIndex = imageUrl.indexOf('/upload/');
+        if (uploadIndex === -1) return;
+        
+        const afterUpload = imageUrl.substring(uploadIndex + 8);
+        const parts = afterUpload.split('/');
+        
+        let startIdx = 0;
+        while (startIdx < parts.length) {
+            const part = parts[startIdx];
+            if (part.startsWith('v') && /^\d+$/.test(part.substring(1))) {
+                startIdx++;
+                break;
+            } else if (part.includes('_') || part.includes(',')) {
+                startIdx++;
+            } else {
+                break;
+            }
         }
-    } catch {
-        // Non-critical
+        
+        const pathSegments = parts.slice(startIdx);
+        if (pathSegments.length === 0) return;
+        
+        const lastSegment = pathSegments[pathSegments.length - 1];
+        const dotIdx = lastSegment.lastIndexOf('.');
+        if (dotIdx !== -1) {
+            pathSegments[pathSegments.length - 1] = lastSegment.substring(0, dotIdx);
+        }
+        
+        const publicId = pathSegments.join('/');
+        await cloudinary.uploader.destroy(publicId);
+    } catch (err) {
+        console.error("Cloudinary delete image failed:", err.message);
     }
 };
 

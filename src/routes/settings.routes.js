@@ -12,7 +12,7 @@ router.get("/public", async (req, res) => {
             'default_language', 'accent_color', 'app_logo', 'favicon',
             'homepage_banner_text', 'footer_text', 'maintenance_mode',
             'maintenance_message', 'new_registrations', 'registration_message',
-            'dating_module', 'anonymous_chat'
+            'dating_module', 'anonymous_chat', 'splash_day_url', 'splash_night_url'
         ];
         
         const settings = await Setting.find({ key: { $in: publicKeys } });
