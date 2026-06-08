@@ -8,7 +8,7 @@ const userModel = require('../models/user.model');
  * @param {string} body - Notification body
  * @param {object} [data] - Optional metadata payload
  */
-async function sendPushNotification(pushTokens, title, body, data = {}) {
+async function sendPushNotification(pushTokens, title, body, data = {}, sound = 'default') {
     if (!pushTokens || !Array.isArray(pushTokens) || pushTokens.length === 0) {
         return;
     }
@@ -21,10 +21,12 @@ async function sendPushNotification(pushTokens, title, body, data = {}) {
 
     const messages = validTokens.map(token => ({
         to: token,
-        sound: 'default',
+        sound: sound || undefined,
         title,
         body,
-        data
+        data,
+        channelId: 'default',
+        priority: 'high'
     }));
 
     try {
@@ -59,9 +61,10 @@ async function sendPushNotification(pushTokens, title, body, data = {}) {
  */
 async function sendPushNotificationToUser(userId, title, body, data = {}) {
     try {
-        const user = await userModel.findById(userId).select('pushTokens');
+        const user = await userModel.findById(userId).select('pushTokens notificationSoundEnabled');
         if (user && user.pushTokens && user.pushTokens.length > 0) {
-            await sendPushNotification(user.pushTokens, title, body, data);
+            const sound = user.notificationSoundEnabled !== false ? 'default' : null;
+            await sendPushNotification(user.pushTokens, title, body, data, sound);
         }
     } catch (err) {
         console.error('[sendPushNotificationToUser Error]:', err);

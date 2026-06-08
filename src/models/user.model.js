@@ -273,7 +273,11 @@ const userSchema = new mongoose.Schema({
     pushTokens: [{
         type: String,
         default: []
-    }]
+    }],
+    notificationSoundEnabled: {
+        type: Boolean,
+        default: true
+    }
 }, { timestamps: true });
 
 // Core Auth & Identity

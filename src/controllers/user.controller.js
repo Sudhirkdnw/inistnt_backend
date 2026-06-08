@@ -129,6 +129,9 @@ async function updateProfile(req, res) {
         if (bio !== undefined) user.bio = bio;
         if (avatar !== undefined) user.avatar = avatar;
         if (isPrivate !== undefined) user.isPrivate = isPrivate;
+        if (req.body.notificationSoundEnabled !== undefined) {
+            user.notificationSoundEnabled = !!req.body.notificationSoundEnabled;
+        }
 
         await user.save();
 
@@ -142,7 +145,8 @@ async function updateProfile(req, res) {
                 avatar: user.avatar,
                 bio: user.bio,
                 isPrivate: user.isPrivate,
-                isEmailVerified: user.isEmailVerified
+                isEmailVerified: user.isEmailVerified,
+                notificationSoundEnabled: user.notificationSoundEnabled
             }
         });
     } catch (error) {
