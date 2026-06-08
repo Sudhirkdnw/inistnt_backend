@@ -1,4 +1,5 @@
 const Setting = require("../models/settings.model");
+const mongoose = require("mongoose");
 
 let cachedSettings = {};
 
@@ -119,6 +120,14 @@ let isSynced = false;
  */
 const loadSettings = async () => {
     try {
+        // Wait for mongoose connection if not connected yet to prevent buffering timeouts
+        if (mongoose.connection.readyState !== 1) {
+            console.log("⏳ [Settings] Database not connected yet. Waiting for connection before load...");
+            await new Promise((resolve) => {
+                mongoose.connection.once("connected", resolve);
+            });
+        }
+
         if (!isSynced) {
             await syncSettings(); // Run once at boot
             isSynced = true;
