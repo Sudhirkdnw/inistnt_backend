@@ -273,6 +273,17 @@ const toggleLike = async (req, res) => {
                         .populate("confession", "confessionText category");
                     io.to(String(confession.user)).emit("new-notification", populatedNotif);
                 }
+
+                // Send push notification
+                const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+                const pushTitle = "New Like";
+                const pushBody = confession.isAnonymous
+                    ? `Someone liked your confession`
+                    : `${req.user.username} liked your confession`;
+                sendPushNotificationToUser(confession.user, pushTitle, pushBody, {
+                    type: "like",
+                    confessionId: confession._id.toString()
+                });
             }
         }
 
@@ -346,6 +357,18 @@ const addComment = async (req, res) => {
                             .populate("confession", "confessionText category");
                         io.to(String(parentComment.user)).emit("new-notification", popNotif);
                     }
+
+                    // Send push notification for comment reply
+                    const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+                    const pushTitle = "New Reply";
+                    const pushBody = confession.isAnonymous
+                        ? `Someone replied to your comment: "${parentComment.text.substring(0, 20)}..."`
+                        : `${req.user.username} replied to your comment: "${parentComment.text.substring(0, 20)}..."`;
+                    sendPushNotificationToUser(parentComment.user, pushTitle, pushBody, {
+                        type: "comment",
+                        confessionId: confession._id.toString(),
+                        commentId: parentComment._id.toString()
+                    });
                 }
             }
         } else {
@@ -373,6 +396,18 @@ const addComment = async (req, res) => {
                     .populate("confession", "confessionText category");
                 io.to(String(confession.user)).emit("new-notification", popNotif);
             }
+
+            // Send push notification for comment on confession
+            const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+            const pushTitle = "New Comment";
+            const pushBody = confession.isAnonymous
+                ? `Someone commented on your confession`
+                : `${req.user.username} commented on your confession`;
+            sendPushNotificationToUser(confession.user, pushTitle, pushBody, {
+                type: "comment",
+                confessionId: confession._id.toString(),
+                commentId: newComment._id.toString()
+            });
         }
         
         const io = req.app.get("io");

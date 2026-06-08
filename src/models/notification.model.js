@@ -20,6 +20,10 @@ const notificationSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "confession"
     },
+    post: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "post"
+    },
     commentId: {
         type: mongoose.Schema.Types.ObjectId
     },

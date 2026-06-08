@@ -11,12 +11,14 @@ const {
     toggleFollow, getFollowers, getFollowing,
     searchUsers, getSuggestions,
     requestSoftDelete, recoverAccount, hardDeleteAccount,
-    acceptFollowRequest, declineFollowRequest
+    acceptFollowRequest, declineFollowRequest,
+    savePushToken
 } = require("../controllers/user.controller");
 
 // Search & suggestions must come before /:id to avoid conflicts
 router.get("/search", authMiddleware, cacheMiddleware(60), searchUsers);
 router.get("/suggestions", authMiddleware, cacheMiddleware(300), getSuggestions);
+router.post("/push-token", authMiddleware, savePushToken);
 router.get("/:id", authMiddleware, cacheMiddleware(60), getUserProfile);
 router.put("/edit", authMiddleware, updateProfile);
 router.put("/avatar", authMiddleware, upload.single("avatar"), updateAvatar);

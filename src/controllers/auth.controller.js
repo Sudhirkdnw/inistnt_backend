@@ -424,7 +424,18 @@ async function loginController(req, res) {
 }
 
 async function logoutController(req, res) {
+    try {
+        const { pushToken } = req.body;
+        if (pushToken && req.user) {
+            await userModel.findByIdAndUpdate(req.user._id, {
+                $pull: { pushTokens: pushToken }
+            });
+        }
+    } catch (err) {
+        console.error("Error pulling push token on logout:", err);
+    }
     res.cookie("token", "", getCookieOptions(0));
+    res.cookie("refreshToken", "", getCookieOptions(0)); // clear refresh token too
     res.status(200).json({ message: "Logged out successfully" });
 }
 

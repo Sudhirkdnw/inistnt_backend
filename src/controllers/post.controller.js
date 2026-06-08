@@ -193,13 +193,31 @@ const toggleLike = async (req, res) => {
 
             // Notify post owner (if not self-like)
             if (post.user.toString() !== userId.toString()) {
-                await notificationModel.create({
+                const notif = await notificationModel.create({
                     recipient: post.user,
                     sender: userId,
                     type: "like",
                     post: post._id,
                     message: `${req.user.username} liked your post`
                 });
+
+                // Socket emission for real-time in-app notification
+                const io = req.app.get("io");
+                if (io) {
+                    const populatedNotif = await notificationModel.findById(notif._id)
+                        .populate("sender", "username fullName avatar")
+                        .populate("post", "caption image");
+                    io.to(String(post.user)).emit("new-notification", populatedNotif);
+                }
+
+                // Mobile push notification
+                const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+                sendPushNotificationToUser(
+                    post.user,
+                    "New Like",
+                    `${req.user.username} liked your post`,
+                    { type: "like", postId: post._id.toString() }
+                );
             }
         }
 
@@ -240,13 +258,31 @@ const addComment = async (req, res) => {
 
         // Notify post owner (if not self-comment)
         if (post.user.toString() !== req.user._id.toString()) {
-            await notificationModel.create({
+            const notif = await notificationModel.create({
                 recipient: post.user,
                 sender: req.user._id,
                 type: "comment",
                 post: post._id,
                 message: `${req.user.username} commented on your post`
             });
+
+            // Socket emission for real-time in-app notification
+            const io = req.app.get("io");
+            if (io) {
+                const populatedNotif = await notificationModel.findById(notif._id)
+                    .populate("sender", "username fullName avatar")
+                    .populate("post", "caption image");
+                io.to(String(post.user)).emit("new-notification", populatedNotif);
+            }
+
+            // Mobile push notification
+            const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+            sendPushNotificationToUser(
+                post.user,
+                "New Comment",
+                `${req.user.username} commented on your post: "${text.trim().substring(0, 40)}${text.trim().length > 40 ? '...' : ''}"`,
+                { type: "comment", postId: post._id.toString() }
+            );
         }
 
         const updatedPost = await postModel.findById(req.params.id)

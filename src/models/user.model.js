@@ -269,7 +269,11 @@ const userSchema = new mongoose.Schema({
     adminLoginOtpExpires: {
         type: Date,
         default: null
-    }
+    },
+    pushTokens: [{
+        type: String,
+        default: []
+    }]
 }, { timestamps: true });
 
 // Core Auth & Identity

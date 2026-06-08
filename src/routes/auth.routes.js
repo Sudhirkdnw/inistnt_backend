@@ -130,7 +130,7 @@ router.post("/login", validate(loginSchema), loginController);
 router.post("/verify-admin-otp", verifyAdminOtpController);
 router.post("/resend-otp", resendOtpController);
 router.post("/refresh-token", refreshTokenController);
-router.post("/logout", logoutController);
+router.post("/logout", softAuthMiddleware, logoutController);
 
 /**
  * @openapi

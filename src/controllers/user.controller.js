@@ -303,6 +303,15 @@ async function toggleFollow(req, res) {
                     io.to(String(targetUserId)).emit("new-notification", populatedNotif);
                 }
 
+                // Send push notification
+                const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+                sendPushNotificationToUser(
+                    targetUserId,
+                    "Follow Request",
+                    `${req.user.username} requested to follow you`,
+                    { type: "follow_request", userId: currentUserId.toString() }
+                );
+
                 res.status(200).json({ message: "Follow requested", isFollowing: false, isRequested: true });
             }
         } else {
@@ -325,6 +334,15 @@ async function toggleFollow(req, res) {
                     .populate("sender", "username fullName avatar");
                 io.to(String(targetUserId)).emit("new-notification", populatedNotif);
             }
+
+            // Send push notification
+            const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+            sendPushNotificationToUser(
+                targetUserId,
+                "New Follower",
+                `${req.user.username} started following you`,
+                { type: "follow", userId: currentUserId.toString() }
+            );
 
             res.status(200).json({ message: "Followed successfully", isFollowing: true, isRequested: false });
         }
@@ -808,6 +826,15 @@ async function acceptFollowRequest(req, res) {
             io.to(String(requesterId)).emit("new-notification", populatedNotif);
         }
 
+        // Send push notification
+        const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+        sendPushNotificationToUser(
+            requesterId,
+            "Follow Request Accepted",
+            `${req.user.username} accepted your follow request`,
+            { type: "follow", userId: currentUserId.toString() }
+        );
+
         res.status(200).json({ message: "Follow request accepted" });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -845,6 +872,26 @@ async function declineFollowRequest(req, res) {
     }
 }
 
+async function savePushToken(req, res) {
+    try {
+        const { token } = req.body;
+        if (!token) {
+            return res.status(400).json({ message: "Push token is required" });
+        }
+        if (typeof token !== "string" || !token.startsWith("ExponentPushToken")) {
+            return res.status(400).json({ message: "Invalid push token format" });
+        }
+
+        await userModel.findByIdAndUpdate(req.user._id, {
+            $addToSet: { pushTokens: token }
+        });
+
+        res.status(200).json({ message: "Push token registered successfully" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
+
 module.exports = {
     getUserProfile,
     updateProfile,
@@ -860,5 +907,6 @@ module.exports = {
     searchUsers,
     getSuggestions,
     acceptFollowRequest,
-    declineFollowRequest
+    declineFollowRequest,
+    savePushToken
 };

@@ -205,6 +205,15 @@ async function swipeRight(req, res) {
                 io.to(String(targetUserId)).emit("dating-match", payload);
                 io.emit(`dating-match-${targetUserId}`, payload);
             }
+
+            // Send push notification
+            const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+            sendPushNotificationToUser(
+                targetUserId,
+                "New Match! 💘",
+                `${meUser.username} is interested in you! You have a new match 💘`,
+                { type: "dating_match", userId: userId.toString() }
+            );
         } else {
             // Not a match yet. Send a dating_like notification
             await notificationModel.create({
@@ -230,6 +239,15 @@ async function swipeRight(req, res) {
                 io.to(String(targetUserId)).emit("dating-like", payload);
                 io.emit(`dating-like-${targetUserId}`, payload);
             }
+
+            // Send push notification
+            const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+            sendPushNotificationToUser(
+                targetUserId,
+                "Someone is interested! 💘",
+                `${meUser.username} is interested in you! 💘`,
+                { type: "dating_like", userId: userId.toString() }
+            );
         }
 
         res.status(200).json({

@@ -362,6 +362,19 @@ async function sendMessage(req, res) {
                         messageId: message._id.toString()
                     };
                     io.to(pid).emit("new-message-notification", notifPayload);
+
+                    // Send Mobile Push Notification
+                    const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+                    const pushTitle = recipientMsgPayload.sender.fullName || recipientMsgPayload.sender.username || "New Message";
+                    const pushBody = message.text 
+                        ? message.text 
+                        : message.mediaType 
+                        ? `Sent a ${message.mediaType}` 
+                        : "Sent an attachment";
+                    sendPushNotificationToUser(pid, pushTitle, pushBody, {
+                        type: "message",
+                        conversationId: id.toString()
+                    });
                 }
             });
         }
