@@ -131,11 +131,12 @@ io.on("connection", (socket) => {
 
                 if (count === 1) {
                     await redisClient.sadd("online_users", uid);
-                    io.emit('user-online', uid);
+                    const currentOnline = await redisClient.smembers("online_users");
+                    io.emit('online-users', currentOnline); // Broadcast to all for APK compatibility
+                } else {
+                    const currentOnline = await redisClient.smembers("online_users");
+                    socket.emit("online-users", currentOnline);
                 }
-
-                const currentOnline = await redisClient.smembers("online_users");
-                socket.emit("online-users", currentOnline);
 
                 // Decrement counter on disconnect
                 socket.once('disconnect', async () => {
@@ -143,7 +144,8 @@ io.on("connection", (socket) => {
                         const remain = await redisClient.decr(connKey); 
                         if (remain <= 0) {
                             await redisClient.srem("online_users", uid);
-                            io.emit("user-offline", uid);
+                            const currentOnline = await redisClient.smembers("online_users");
+                            io.emit("online-users", currentOnline); // Broadcast to all for APK compatibility
                         }
                     } catch (_) {}
                 });
