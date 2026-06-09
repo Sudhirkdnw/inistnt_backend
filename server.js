@@ -129,9 +129,23 @@ io.on("connection", (socket) => {
                     return;
                 }
 
+                if (count === 1) {
+                    await redisClient.sadd("online_users", uid);
+                    io.emit('user-online', uid);
+                }
+
+                const currentOnline = await redisClient.smembers("online_users");
+                socket.emit("online-users", currentOnline);
+
                 // Decrement counter on disconnect
                 socket.once('disconnect', async () => {
-                    try { await redisClient.decr(connKey); } catch (_) {}
+                    try { 
+                        const remain = await redisClient.decr(connKey); 
+                        if (remain <= 0) {
+                            await redisClient.srem("online_users", uid);
+                            io.emit("user-offline", uid);
+                        }
+                    } catch (_) {}
                 });
             }
         } catch (err) {

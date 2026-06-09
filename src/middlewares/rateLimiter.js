@@ -11,6 +11,11 @@ const InfrastructureLogger = require('../utils/infrastructureLogger');
  */
 const rateLimiter = ({ windowMs = 60000, max = 100, prefix = 'rl' }) => {
     return async (req, res, next) => {
+        // Bypass rate limiting entirely during local development
+        if (process.env.NODE_ENV !== 'production') {
+            return next();
+        }
+
         if (!redisClient) return next();
 
         let userId = null;

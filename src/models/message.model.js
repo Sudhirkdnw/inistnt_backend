@@ -25,6 +25,11 @@ const messageSchema = new mongoose.Schema(
             enum: ["image", "video", "audio"],
             required: false,
         },
+        replyTo: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Message",
+            required: false,
+        },
         readBy: [
             {
                 type: mongoose.Schema.Types.ObjectId,

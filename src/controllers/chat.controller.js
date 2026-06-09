@@ -232,6 +232,11 @@ async function getMessages(req, res) {
 
         let messages = await Message.find(filter)
             .populate("sender", "username avatar")
+            .populate({
+                path: "replyTo",
+                select: "text mediaUrl mediaType sender",
+                populate: { path: "sender", select: "username avatar fullName" }
+            })
             .sort({ createdAt: -1 })
             .limit(limit)
             .lean();
@@ -260,6 +265,25 @@ async function getMessages(req, res) {
                     return strId === currentUserId.toString() ? strId : `anon_${strId.substring(0, 8)}`;
                 });
             }
+
+            
+            // Mask replyTo sender if exists
+            if (conversation.isAnonymousChat && m.replyTo && m.replyTo.sender) {
+                if (m.replyTo.sender._id.toString() !== currentUserId.toString()) {
+                    const rsId = m.replyTo.sender._id.toString();
+                    let rIdentity = "Anonymous User";
+                    if (conversation.anonymousIdentities) {
+                        rIdentity = typeof conversation.anonymousIdentities.get === 'function' 
+                            ? conversation.anonymousIdentities.get(rsId) 
+                            : conversation.anonymousIdentities[rsId];
+                        if (!rIdentity) rIdentity = "Anonymous User";
+                    }
+                    m.replyTo.sender._id = `anon_${rsId.substring(0, 8)}`;
+                    m.replyTo.sender.username = rIdentity;
+                    m.replyTo.sender.avatar = "";
+                }
+            }
+
             return m;
         });
 
@@ -272,7 +296,7 @@ async function getMessages(req, res) {
 async function sendMessage(req, res) {
     try {
         const { id } = req.params; // conversation id
-        const { text, tempId } = req.body; // tempId from optimistic UI
+        const { text, tempId, replyTo } = req.body; // tempId from optimistic UI
         const currentUserId = req.user._id;
 
         let mediaUrl = undefined;
@@ -307,10 +331,18 @@ async function sendMessage(req, res) {
             text: text ? text.trim() : "",
             mediaUrl,
             mediaType,
+            replyTo: replyTo || undefined,
             readBy: [currentUserId]
         });
 
         await message.populate("sender", "username avatar");
+        if (message.replyTo) {
+            await message.populate({
+                path: "replyTo",
+                select: "text mediaUrl mediaType sender",
+                populate: { path: "sender", select: "username avatar fullName" }
+            });
+        }
 
         // Update conversation's lastMessage and timestamp
         conversation.lastMessage = message._id;
