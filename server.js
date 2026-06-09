@@ -60,6 +60,8 @@ app.set("io", io);
 const InfrastructureLogger = require('./src/utils/infrastructureLogger');
 InfrastructureLogger.setSocketIO(io);
 
+// In-memory fallback for online users (used if Redis is disabled)
+const memoryOnlineUsers = new Set();
 
 
 io.on("connection", (socket) => {
@@ -117,19 +119,19 @@ io.on("connection", (socket) => {
             const MAX_CONNECTIONS_PER_USER = parseInt(process.env.MAX_CONNECTIONS_PER_USER) || 3;
             
             if (redisClient) {
-                // Use Redis INCR counter — O(1), no fetchSockets() round-trip per connection
+                // Use Redis INCR counter for connection limits
                 const connKey = `socket_conns:${uid}`;
                 const count = await redisClient.incr(connKey);
-                await redisClient.expire(connKey, 86400); // auto-expire in 24h
+                await redisClient.expire(connKey, 86400);
 
                 if (count > MAX_CONNECTIONS_PER_USER) {
-                    await redisClient.decr(connKey); // revert the increment
+                    await redisClient.decr(connKey);
                     socket.emit('forced_disconnect', { reason: 'Too many concurrent connections.' });
                     socket.disconnect(true);
                     return;
                 }
 
-                // --- ONLINE STATUS TRACKING ---
+                // --- ONLINE STATUS TRACKING (REDIS) ---
                 await redisClient.sadd("online_users", uid);
                 const currentOnline = await redisClient.smembers("online_users");
                 io.emit('online-users', currentOnline); // Broadcast to all for APK compatibility
@@ -152,6 +154,22 @@ io.on("connection", (socket) => {
                             } catch (_) {}
                         }, 2000);
                     } catch (_) {}
+                });
+            } else {
+                // --- ONLINE STATUS TRACKING (IN-MEMORY FALLBACK) ---
+                memoryOnlineUsers.add(uid);
+                io.emit('online-users', Array.from(memoryOnlineUsers));
+
+                socket.once('disconnect', async () => {
+                    setTimeout(async () => {
+                        try {
+                            const sockets = await io.in(uid).fetchSockets();
+                            if (sockets.length === 0) {
+                                memoryOnlineUsers.delete(uid);
+                                io.emit("online-users", Array.from(memoryOnlineUsers));
+                            }
+                        } catch (_) {}
+                    }, 2000);
                 });
             }
         } catch (err) {
