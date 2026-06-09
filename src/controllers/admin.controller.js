@@ -1950,6 +1950,7 @@ module.exports = {
     getPendingVerifications, handleVerification,
     getAllDatingProfiles, handleDatingProfile,
     getAuditLogs,
+    getSettings, updateSetting,
     flushRedis, resetAllPasswords, broadcastAnnouncement, broadcastPushNotification, getGlobalNotificationHistory,
     uploadSystemAsset,
     getEmailLogs, getEmailTemplates, updateEmailTemplate, sendTestEmail,
