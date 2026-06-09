@@ -129,24 +129,28 @@ io.on("connection", (socket) => {
                     return;
                 }
 
-                if (count === 1) {
-                    await redisClient.sadd("online_users", uid);
-                    const currentOnline = await redisClient.smembers("online_users");
-                    io.emit('online-users', currentOnline); // Broadcast to all for APK compatibility
-                } else {
-                    const currentOnline = await redisClient.smembers("online_users");
-                    socket.emit("online-users", currentOnline);
-                }
+                // --- ONLINE STATUS TRACKING ---
+                await redisClient.sadd("online_users", uid);
+                const currentOnline = await redisClient.smembers("online_users");
+                io.emit('online-users', currentOnline); // Broadcast to all for APK compatibility
 
                 // Decrement counter on disconnect
                 socket.once('disconnect', async () => {
                     try { 
-                        const remain = await redisClient.decr(connKey); 
-                        if (remain <= 0) {
-                            await redisClient.srem("online_users", uid);
-                            const currentOnline = await redisClient.smembers("online_users");
-                            io.emit("online-users", currentOnline); // Broadcast to all for APK compatibility
-                        }
+                        // connection limit decr
+                        await redisClient.decr(connKey); 
+                        
+                        // online status srem: wait a bit to allow fast reconnects
+                        setTimeout(async () => {
+                            try {
+                                const sockets = await io.in(uid).fetchSockets();
+                                if (sockets.length === 0) {
+                                    await redisClient.srem("online_users", uid);
+                                    const updatedOnline = await redisClient.smembers("online_users");
+                                    io.emit("online-users", updatedOnline); // Broadcast to all
+                                }
+                            } catch (_) {}
+                        }, 2000);
                     } catch (_) {}
                 });
             }
