@@ -14,7 +14,7 @@ async function sendPushNotification(pushTokens, title, body, data = {}, sound = 
     }
 
     // Filter valid Expo push tokens
-    const validTokens = pushTokens.filter(token => typeof token === 'string' && token.startsWith('ExponentPushToken'));
+    const validTokens = pushTokens.filter(token => typeof token === 'string' && (token.startsWith('ExponentPushToken') || token.startsWith('ExpoPushToken')));
     if (validTokens.length === 0) {
         return;
     }

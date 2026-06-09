@@ -222,7 +222,8 @@ async function registerController(req, res) {
                     avatar: user.avatar,
                     role: user.role,
                     verificationStatus: user.verificationStatus,
-                    collegeName: user.collegeName
+                    collegeName: user.collegeName,
+                    notificationSoundEnabled: user.notificationSoundEnabled
                 }
             });
         } else {
@@ -237,7 +238,8 @@ async function registerController(req, res) {
                     avatar: user.avatar,
                     role: user.role,
                     verificationStatus: user.verificationStatus,
-                    collegeName: user.collegeName
+                    collegeName: user.collegeName,
+                    notificationSoundEnabled: user.notificationSoundEnabled
                 }
             });
         }
@@ -415,7 +417,8 @@ async function loginController(req, res) {
                 email: user.email,
                 fullName: user.fullName,
                 avatar: user.avatar,
-                role: user.role
+                role: user.role,
+                notificationSoundEnabled: user.notificationSoundEnabled
             }
         });
     } catch (error) {
@@ -682,7 +685,8 @@ async function verifyAdminOtpController(req, res) {
                 adminRole: user.adminRole || (user.username === 'admin' ? 'superadmin' : 'admin'),
                 adminPermissions: adminPermissions,
                 verificationStatus: user.verificationStatus,
-                collegeName: user.collegeName
+                collegeName: user.collegeName,
+                notificationSoundEnabled: user.notificationSoundEnabled
             }
         });
     } catch (error) {

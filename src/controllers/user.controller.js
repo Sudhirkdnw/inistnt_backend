@@ -882,7 +882,7 @@ async function savePushToken(req, res) {
         if (!token) {
             return res.status(400).json({ message: "Push token is required" });
         }
-        if (typeof token !== "string" || !token.startsWith("ExponentPushToken")) {
+        if (typeof token !== "string" || (!token.startsWith("ExponentPushToken") && !token.startsWith("ExpoPushToken"))) {
             return res.status(400).json({ message: "Invalid push token format" });
         }
 
