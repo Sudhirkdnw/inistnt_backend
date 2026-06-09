@@ -5,7 +5,7 @@ const emailTemplateSchema = new mongoose.Schema({
     subject: { type: String, required: true },
     content: { type: String, required: true }, // HTML content
     variables: [String], // Array of available placeholders like ['otp', 'username']
-    lastModifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+    lastModifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'user' }
 }, { timestamps: true });
 
 module.exports = mongoose.model('EmailTemplate', emailTemplateSchema);

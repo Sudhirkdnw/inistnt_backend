@@ -834,7 +834,7 @@ const broadcastPushNotification = async (req, res) => {
         const { sendPushNotification } = require("../utils/pushNotifications");
 
         // Fetch all users with valid push tokens
-        const usersWithTokens = await userModel.find({ 
+        const usersWithTokens = await userModel.find({
             pushTokens: { $exists: true, $not: { $size: 0 } },
             isSoftDeleted: false
         }).select('pushTokens');
@@ -854,24 +854,28 @@ const broadcastPushNotification = async (req, res) => {
         }
 
         // Return immediately to not block the request
-        res.status(200).json({ 
+        res.status(200).json({
             message: `Push notification broadcast initiated for ${uniqueTokens.length} devices.`,
             estimatedDevices: uniqueTokens.length
         });
 
         // Send in the background
         setImmediate(async () => {
-            const successCount = await sendPushNotification(uniqueTokens, title, message, { type: "admin_broadcast" });
-            
-            // Log history
-            await GlobalNotificationLog.create({
-                title,
-                message,
-                sentBy: req.user._id,
-                totalSent: successCount || uniqueTokens.length
-            });
+            try {
+                const successCount = await sendPushNotification(uniqueTokens, title, message, { type: "admin_broadcast" });
 
-            await logAudit(req.user._id, "broadcast_push_notification", "system", null, { title, message, totalSent: successCount });
+                // Log history
+                await GlobalNotificationLog.create({
+                    title,
+                    message,
+                    sentBy: req.user._id,
+                    totalSent: successCount || uniqueTokens.length
+                });
+
+                await logAudit(req.user._id, "broadcast_push_notification", "system", null, { title, message, totalSent: successCount });
+            } catch (err) {
+                console.error("Background Push Notification Error:", err);
+            }
         });
 
     } catch (error) {
@@ -890,7 +894,7 @@ const getGlobalNotificationHistory = async (req, res) => {
             .populate("sentBy", "username email avatar")
             .sort({ createdAt: -1 })
             .limit(100);
-            
+
         res.status(200).json({ history });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -1946,7 +1950,6 @@ module.exports = {
     getPendingVerifications, handleVerification,
     getAllDatingProfiles, handleDatingProfile,
     getAuditLogs,
-    getSettings, updateSetting,
     flushRedis, resetAllPasswords, broadcastAnnouncement, broadcastPushNotification, getGlobalNotificationHistory,
     uploadSystemAsset,
     getEmailLogs, getEmailTemplates, updateEmailTemplate, sendTestEmail,

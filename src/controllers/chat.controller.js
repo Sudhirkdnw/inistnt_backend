@@ -8,10 +8,10 @@ const { uploadImage } = require("../utils/cloudinary");
 // Helper to anonymize participants
 function anonymizeParticipants(conversation, currentUserId) {
     if (!conversation.isAnonymousChat) return conversation;
-    
+
     // Convert to plain object if it's a Mongoose doc
     const conv = conversation.toObject ? conversation.toObject() : { ...conversation };
-    
+
     // Mongoose Map converted to object via toObject() or accessed via get()
     const getIdentity = (id) => {
         if (!conv.anonymousIdentities) return "Anonymous User";
@@ -219,7 +219,7 @@ async function getMessages(req, res) {
         const currentUserId = req.user._id;
 
         // Pagination: ?limit=50&cursor=<ISO_timestamp_of_oldest_msg>
-        const limit  = Math.min(parseInt(req.query.limit) || 50, 100);
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100);
         const cursor = req.query.cursor;
 
         const conversation = await Conversation.findOne({ _id: id, participants: currentUserId });
@@ -240,16 +240,16 @@ async function getMessages(req, res) {
             .sort({ createdAt: -1 })
             .limit(limit)
             .lean();
-            
+
         messages = messages.map(msg => {
             const m = msg;
             if (conversation.isAnonymousChat && m.sender._id.toString() !== currentUserId.toString()) {
                 const sId = m.sender._id.toString();
-                
+
                 let identity = "Anonymous User";
                 if (conversation.anonymousIdentities) {
-                    identity = typeof conversation.anonymousIdentities.get === 'function' 
-                        ? conversation.anonymousIdentities.get(sId) 
+                    identity = typeof conversation.anonymousIdentities.get === 'function'
+                        ? conversation.anonymousIdentities.get(sId)
                         : conversation.anonymousIdentities[sId];
                     if (!identity) identity = "Anonymous User";
                 }
@@ -266,15 +266,15 @@ async function getMessages(req, res) {
                 });
             }
 
-            
+
             // Mask replyTo sender if exists
             if (conversation.isAnonymousChat && m.replyTo && m.replyTo.sender) {
                 if (m.replyTo.sender._id.toString() !== currentUserId.toString()) {
                     const rsId = m.replyTo.sender._id.toString();
                     let rIdentity = "Anonymous User";
                     if (conversation.anonymousIdentities) {
-                        rIdentity = typeof conversation.anonymousIdentities.get === 'function' 
-                            ? conversation.anonymousIdentities.get(rsId) 
+                        rIdentity = typeof conversation.anonymousIdentities.get === 'function'
+                            ? conversation.anonymousIdentities.get(rsId)
                             : conversation.anonymousIdentities[rsId];
                         if (!rIdentity) rIdentity = "Anonymous User";
                     }
@@ -304,7 +304,7 @@ async function sendMessage(req, res) {
 
         if (req.file) {
             mediaUrl = await uploadImage(req.file.buffer, {}, req.file.mimetype);
-            
+
             if (req.file.mimetype.startsWith("image/")) mediaType = "image";
             else if (req.file.mimetype.startsWith("video/")) mediaType = "video";
             else if (req.file.mimetype.startsWith("audio/")) mediaType = "audio";
@@ -363,11 +363,11 @@ async function sendMessage(req, res) {
                     let recipientMsgPayload = JSON.parse(JSON.stringify(msgPayload)); // Deep copy to avoid mutating reference for other recipients
                     if (conversation.isAnonymousChat) {
                         const sId = currentUserId.toString();
-                        
+
                         let identity = "Anonymous User";
                         if (conversation.anonymousIdentities) {
-                            identity = typeof conversation.anonymousIdentities.get === 'function' 
-                                ? conversation.anonymousIdentities.get(sId) 
+                            identity = typeof conversation.anonymousIdentities.get === 'function'
+                                ? conversation.anonymousIdentities.get(sId)
                                 : conversation.anonymousIdentities[sId];
                             if (!identity) identity = "Anonymous User";
                         }
@@ -375,7 +375,7 @@ async function sendMessage(req, res) {
                         recipientMsgPayload.sender._id = `anon_${sId.substring(0, 8)}`; // Mask ID
                         recipientMsgPayload.sender.username = identity;
                         recipientMsgPayload.sender.avatar = "";
-                        
+
                         if (recipientMsgPayload.readBy) {
                             recipientMsgPayload.readBy = recipientMsgPayload.readBy.map(id => {
                                 const strId = id.toString();
@@ -383,7 +383,7 @@ async function sendMessage(req, res) {
                             });
                         }
                     }
-                    
+
                     io.to(pid).emit("receive-message", recipientMsgPayload);
 
                     // Lightweight notification
@@ -398,12 +398,12 @@ async function sendMessage(req, res) {
                     // Send Mobile Push Notification
                     const { sendPushNotificationToUser } = require("../utils/pushNotifications");
                     const senderName = recipientMsgPayload.sender.fullName || recipientMsgPayload.sender.username || "Someone";
-                    const pushTitle = `💬 New message from ${senderName}`;
-                    const pushBody = message.text 
-                        ? message.text 
-                        : message.mediaType 
-                        ? `Sent a ${message.mediaType}` 
-                        : "Sent an attachment";
+                    const pushTitle = `💬 New message from ${senderName} 📨`;
+                    const pushBody = message.text
+                        ? message.text
+                        : message.mediaType
+                            ? `Sent a ${message.mediaType}`
+                            : "Sent an attachment";
                     sendPushNotificationToUser(pid, pushTitle, pushBody, {
                         type: "message",
                         conversationId: id.toString()
@@ -442,7 +442,7 @@ async function deleteMessage(req, res) {
             const lastMsg = await Message.findOne({ conversation: conversationId }).sort({ createdAt: -1 });
             conversation.lastMessage = lastMsg ? lastMsg._id : null;
             await conversation.save();
-            
+
             const io = req.app.get("io");
             if (io) {
                 conversation.participants.forEach(participantId => {
@@ -556,7 +556,7 @@ async function markAsRead(req, res) {
                 if (conversation.isAnonymousChat && pidStr !== currentUserId.toString()) {
                     emitUserId = `anon_${emitUserId.substring(0, 8)}`;
                 }
-                
+
                 io.to(pidStr).emit("conversation-read", {
                     conversationId: id,
                     userId: emitUserId

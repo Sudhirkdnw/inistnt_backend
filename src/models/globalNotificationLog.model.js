@@ -13,7 +13,7 @@ const globalNotificationLogSchema = new mongoose.Schema({
     },
     sentBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
+        ref: "user",
         required: true
     },
     totalSent: {
