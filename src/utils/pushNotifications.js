@@ -29,27 +29,37 @@ async function sendPushNotification(pushTokens, title, body, data = {}, sound = 
         priority: 'high'
     }));
 
-    try {
-        // Expo push notifications are sent in chunks
-        // Axios POST requests directly to exp.host
-        const response = await axios.post('https://exp.host/--/api/v2/push/send', messages, {
-            headers: {
-                'Accept': 'application/json',
-                'Accept-Encoding': 'gzip, deflate',
-                'Content-Type': 'application/json',
-            }
-        });
+    let successCount = 0;
 
-        if (response.data && response.data.data) {
-            response.data.data.forEach((ticket, index) => {
-                if (ticket.status === 'error') {
-                    console.error(`[Expo Push Error] for token ${validTokens[index]}: ${ticket.message}`);
+    // Expo API allows up to 100 messages per request
+    const CHUNK_SIZE = 100;
+    
+    for (let i = 0; i < messages.length; i += CHUNK_SIZE) {
+        const chunk = messages.slice(i, i + CHUNK_SIZE);
+        try {
+            const response = await axios.post('https://exp.host/--/api/v2/push/send', chunk, {
+                headers: {
+                    'Accept': 'application/json',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Content-Type': 'application/json',
                 }
             });
+
+            if (response.data && response.data.data) {
+                response.data.data.forEach((ticket, index) => {
+                    if (ticket.status === 'error') {
+                        console.error(`[Expo Push Error] for token ${chunk[index].to}: ${ticket.message}`);
+                    } else {
+                        successCount++;
+                    }
+                });
+            }
+        } catch (err) {
+            console.error(`[Expo Push Chunk Exception] chunk ${i/CHUNK_SIZE + 1}:`, err.message);
         }
-    } catch (err) {
-        console.error('[Expo Push Utility Exception]:', err.message);
     }
+    
+    return successCount;
 }
 
 /**

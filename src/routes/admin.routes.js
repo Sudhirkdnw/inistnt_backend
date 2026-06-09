@@ -19,7 +19,8 @@ const {
     exportUsers, bulkDeleteUsers, bulkDeleteConfessions, bulkConfessionsModeration,
     exportReports, bulkReportsModeration, bulkHandleVerifications,
     getColleges, addCollege, updateCollege, deleteCollege, bulkUploadColleges,
-    getAdmins, createAdmin, updateAdmin, deleteAdmin
+    getAdmins, createAdmin, updateAdmin, deleteAdmin,
+    broadcastPushNotification, getGlobalNotificationHistory
 } = require("../controllers/admin.controller");
 
 const {
@@ -134,6 +135,10 @@ router.post("/mail/send-test", requirePermission("userManagement", "update"), se
 router.post("/danger/flush-redis", requirePermission("analytics", "update"), flushRedis);
 router.post("/danger/reset-passwords", requirePermission("userManagement", "update"), resetAllPasswords);
 router.post("/danger/broadcast", requirePermission("userManagement", "update"), broadcastAnnouncement);
+
+// Push Notifications
+router.post("/notifications/broadcast", requirePermission("userManagement", "update"), broadcastPushNotification);
+router.get("/notifications/history", requirePermission("userManagement", "view"), getGlobalNotificationHistory);
 
 // Premium Subscription Management
 router.get("/premium/settings", requirePermission("premium", "view"), getPremiumSettings);

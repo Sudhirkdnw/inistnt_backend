@@ -822,6 +822,81 @@ const broadcastAnnouncement = async (req, res) => {
     }
 };
 
+// POST /api/admin/notifications/broadcast
+const broadcastPushNotification = async (req, res) => {
+    try {
+        const { title, message } = req.body;
+        if (!title || !message) {
+            return res.status(400).json({ message: "Title and message are required" });
+        }
+
+        const GlobalNotificationLog = require("../models/globalNotificationLog.model");
+        const { sendPushNotification } = require("../utils/pushNotifications");
+
+        // Fetch all users with valid push tokens
+        const usersWithTokens = await userModel.find({ 
+            pushTokens: { $exists: true, $not: { $size: 0 } },
+            isSoftDeleted: false
+        }).select('pushTokens');
+
+        const allTokens = usersWithTokens.reduce((acc, user) => {
+            if (user.pushTokens && Array.isArray(user.pushTokens)) {
+                acc.push(...user.pushTokens);
+            }
+            return acc;
+        }, []);
+
+        // Deduplicate tokens
+        const uniqueTokens = [...new Set(allTokens)];
+
+        if (uniqueTokens.length === 0) {
+            return res.status(400).json({ message: "No active push tokens found across the user base." });
+        }
+
+        // Return immediately to not block the request
+        res.status(200).json({ 
+            message: `Push notification broadcast initiated for ${uniqueTokens.length} devices.`,
+            estimatedDevices: uniqueTokens.length
+        });
+
+        // Send in the background
+        setImmediate(async () => {
+            const successCount = await sendPushNotification(uniqueTokens, title, message, { type: "admin_broadcast" });
+            
+            // Log history
+            await GlobalNotificationLog.create({
+                title,
+                message,
+                sentBy: req.user._id,
+                totalSent: successCount || uniqueTokens.length
+            });
+
+            await logAudit(req.user._id, "broadcast_push_notification", "system", null, { title, message, totalSent: successCount });
+        });
+
+    } catch (error) {
+        console.error("Broadcast Push Notification Error:", error);
+        if (!res.headersSent) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+};
+
+// GET /api/admin/notifications/history
+const getGlobalNotificationHistory = async (req, res) => {
+    try {
+        const GlobalNotificationLog = require("../models/globalNotificationLog.model");
+        const history = await GlobalNotificationLog.find()
+            .populate("sentBy", "username email avatar")
+            .sort({ createdAt: -1 })
+            .limit(100);
+            
+        res.status(200).json({ history });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // POST /api/admin/settings/upload-asset
 const uploadSystemAsset = async (req, res) => {
     try {
@@ -1871,8 +1946,7 @@ module.exports = {
     getPendingVerifications, handleVerification,
     getAllDatingProfiles, handleDatingProfile,
     getAuditLogs,
-    getSettings, updateSetting,
-    flushRedis, resetAllPasswords, broadcastAnnouncement,
+    flushRedis, resetAllPasswords, broadcastAnnouncement, broadcastPushNotification, getGlobalNotificationHistory,
     uploadSystemAsset,
     getEmailLogs, getEmailTemplates, updateEmailTemplate, sendTestEmail,
     getMailConfig, updateMailConfig,

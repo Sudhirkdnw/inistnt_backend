@@ -397,7 +397,8 @@ async function sendMessage(req, res) {
 
                     // Send Mobile Push Notification
                     const { sendPushNotificationToUser } = require("../utils/pushNotifications");
-                    const pushTitle = recipientMsgPayload.sender.fullName || recipientMsgPayload.sender.username || "New Message";
+                    const senderName = recipientMsgPayload.sender.fullName || recipientMsgPayload.sender.username || "Someone";
+                    const pushTitle = `💬 New message from ${senderName}`;
                     const pushBody = message.text 
                         ? message.text 
                         : message.mediaType 
