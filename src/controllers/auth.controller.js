@@ -488,7 +488,8 @@ async function forgotPasswordController(req, res) {
             throw new Error(`Token generation failed: ${tokenErr.message}`);
         }
 
-        const resetUrl = `${req.headers.origin}/reset-password/${resetToken}`;
+        const origin = req.headers.origin || process.env.CLIENT_URL || 'https://www.hykee.in';
+        const resetUrl = `${origin}/reset-password/${resetToken}`;
 
         // Send password reset email asynchronously in the background (non-blocking)
         const { sendPasswordResetEmail } = require("../services/emailService");
