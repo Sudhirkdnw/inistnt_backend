@@ -428,7 +428,7 @@ async function loginController(req, res) {
 
 async function logoutController(req, res) {
     try {
-        const { pushToken } = req.body;
+        const { pushToken } = req.body || {};
         if (pushToken && req.user) {
             await userModel.findByIdAndUpdate(req.user._id, {
                 $pull: { pushTokens: pushToken }
