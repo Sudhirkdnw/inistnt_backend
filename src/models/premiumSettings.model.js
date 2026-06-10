@@ -14,6 +14,18 @@ const premiumSettingsSchema = new mongoose.Schema({
         enum: ["mock", "stripe", "razorpay", "cashfree"],
         default: "mock"
     },
+    enableStripeGateway: {
+        type: Boolean,
+        default: false
+    },
+    enableRazorpayGateway: {
+        type: Boolean,
+        default: false
+    },
+    enableCashfreeGateway: {
+        type: Boolean,
+        default: false
+    },
     cashfreeAppId: {
         type: String,
         default: ""

@@ -206,12 +206,18 @@ async function getSubscriptionStatus(req, res) {
         let settings = await getPremiumSettingsCached();
         const isPremiumRequired = settings ? settings.isPremiumRequired : true;
         const showMockGateway = settings ? settings.showMockGateway : true;
+        const enableStripeGateway = settings ? settings.enableStripeGateway : false;
+        const enableRazorpayGateway = settings ? settings.enableRazorpayGateway : false;
+        const enableCashfreeGateway = settings ? settings.enableCashfreeGateway : false;
         const activeGateway = settings ? settings.activeGateway : "mock";
 
         if (!userId) {
             return res.status(200).json({
                 isPremiumRequired,
                 showMockGateway: !!showMockGateway,
+                enableStripeGateway: !!enableStripeGateway,
+                enableRazorpayGateway: !!enableRazorpayGateway,
+                enableCashfreeGateway: !!enableCashfreeGateway,
                 activeGateway,
                 isPremium: false,
                 premiumExpireAt: null,
@@ -234,6 +240,9 @@ async function getSubscriptionStatus(req, res) {
         res.status(200).json({
             isPremiumRequired,
             showMockGateway: !!showMockGateway,
+            enableStripeGateway: !!enableStripeGateway,
+            enableRazorpayGateway: !!enableRazorpayGateway,
+            enableCashfreeGateway: !!enableCashfreeGateway,
             activeGateway,
             isPremium: !!isPremium,
             premiumExpireAt: user.premiumExpireAt,

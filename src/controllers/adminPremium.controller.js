@@ -12,6 +12,10 @@ async function getSettings(req, res) {
             settings = await premiumSettingsModel.create({
                 isPremiumRequired: true,
                 activeGateway: "mock",
+                showMockGateway: true,
+                enableStripeGateway: false,
+                enableRazorpayGateway: false,
+                enableCashfreeGateway: false,
                 stripePublicKey: "",
                 stripeSecretKey: "",
                 stripeWebhookSecret: "",
@@ -41,7 +45,10 @@ async function updateSettings(req, res) {
         const { 
             isPremiumRequired, 
             showMockGateway,
-            activeGateway, 
+            activeGateway,
+            enableStripeGateway,
+            enableRazorpayGateway,
+            enableCashfreeGateway,
             stripePublicKey, 
             stripeSecretKey, 
             stripeWebhookSecret, 
@@ -60,6 +67,9 @@ async function updateSettings(req, res) {
         if (isPremiumRequired !== undefined) settings.isPremiumRequired = isPremiumRequired;
         if (showMockGateway !== undefined) settings.showMockGateway = showMockGateway;
         if (activeGateway !== undefined) settings.activeGateway = activeGateway;
+        if (enableStripeGateway !== undefined) settings.enableStripeGateway = enableStripeGateway;
+        if (enableRazorpayGateway !== undefined) settings.enableRazorpayGateway = enableRazorpayGateway;
+        if (enableCashfreeGateway !== undefined) settings.enableCashfreeGateway = enableCashfreeGateway;
         if (stripePublicKey !== undefined) settings.stripePublicKey = stripePublicKey;
         if (razorpayKeyId !== undefined) settings.razorpayKeyId = razorpayKeyId;
         if (cashfreeAppId !== undefined) settings.cashfreeAppId = cashfreeAppId;

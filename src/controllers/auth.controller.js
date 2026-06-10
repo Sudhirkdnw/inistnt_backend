@@ -250,7 +250,7 @@ async function registerController(req, res) {
 
 async function loginController(req, res) {
     try {
-        const { username, password } = req.body;
+        const { username, password, adminLogin } = req.body;
 
         if (!username || !password) {
             return res.status(400).json({ message: "Username and password are required" });
@@ -333,7 +333,7 @@ async function loginController(req, res) {
         }
         const isSuspicious = checkSuspicious(user.loginHistory, metadata);
 
-        if (user.role === 'admin' || user.role === 'superadmin') {
+        if ((user.role === 'admin' || user.role === 'superadmin') && adminLogin === true) {
             const otpVerificationModel = require("../models/otpVerification.model");
             let otpVerification = await otpVerificationModel.findOne({ user: user._id });
 
@@ -631,8 +631,8 @@ async function verifyAdminOtpController(req, res) {
         }
 
         // Sign new short-lived Access Token and rotating Refresh Token
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
-        const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+        const token = jwt.sign({ id: user._id, isAdminSession: true }, process.env.JWT_SECRET, { expiresIn: "15m" });
+        const refreshToken = jwt.sign({ id: user._id, isAdminSession: true }, process.env.JWT_SECRET, { expiresIn: "7d" });
         const refreshTokenHash = crypto.createHash("sha256").update(refreshToken).digest("hex");
 
         // Save session to database
@@ -821,8 +821,8 @@ async function refreshTokenController(req, res) {
             return res.status(401).json({ message: "Unauthorized user" });
         }
 
-        const newAccessToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
-        const newRefreshToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+        const newAccessToken = jwt.sign({ id: user._id, isAdminSession: true }, process.env.JWT_SECRET, { expiresIn: "15m" });
+        const newRefreshToken = jwt.sign({ id: user._id, isAdminSession: true }, process.env.JWT_SECRET, { expiresIn: "7d" });
         const newRefreshTokenHash = crypto.createHash("sha256").update(newRefreshToken).digest("hex");
 
         // Rotate the token on the session

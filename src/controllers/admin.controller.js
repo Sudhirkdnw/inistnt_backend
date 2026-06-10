@@ -54,6 +54,41 @@ const getDashboard = async (req, res) => {
         const recentConfessions = await confessionModel.find().sort({ createdAt: -1 }).limit(5).select("confessionText category isAnonymous collegeName likes commentCount isHidden createdAt user").populate("user", "username avatar");
         const recentReports = await reportModel.find({ status: "pending" }).sort({ createdAt: -1 }).limit(5).select("reporter targetType targetId reason description status createdAt").populate("reporter", "username").populate("targetId");
 
+        const os = require('os');
+        const cpuUsage = Math.round(os.loadavg()[0] * 100 / os.cpus().length);
+        const freeMem = os.freemem();
+        const totalMem = os.totalmem();
+        const memUsage = Math.round(((totalMem - freeMem) / totalMem) * 100);
+
+        const chartStartDate = new Date();
+        chartStartDate.setDate(chartStartDate.getDate() - 7);
+
+        const [userGrowth, confessionActivity] = await Promise.all([
+            userModel.aggregate([
+                { $match: { createdAt: { $gte: chartStartDate } } },
+                { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } }
+            ]),
+            confessionModel.aggregate([
+                { $match: { createdAt: { $gte: chartStartDate } } },
+                { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } }
+            ])
+        ]);
+
+        const chartData = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toISOString().split('T')[0];
+            const uCount = userGrowth.find(u => u._id === dateStr)?.count || 0;
+            const cCount = confessionActivity.find(c => c._id === dateStr)?.count || 0;
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            chartData.push({
+                name: days[d.getDay()],
+                users: uCount,
+                posts: cCount
+            });
+        }
+
         res.status(200).json({
             stats: {
                 totalUsers, activeUsers24h, onlineUsers: onlineUsersCount,
@@ -64,7 +99,16 @@ const getDashboard = async (req, res) => {
             },
             recentUsers,
             recentConfessions,
-            recentReports
+            recentReports,
+            chartData,
+            serverStatus: {
+                cpuUsage: Math.min(cpuUsage, 100),
+                memoryUsage: memUsage,
+                api: "Operational",
+                socket: global.ioInstance ? "Connected" : "Offline",
+                redis: require("../utils/redis").redisClient ? "Healthy" : "Offline",
+                db: "Connected"
+            }
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -156,12 +200,15 @@ const toggleBan = async (req, res) => {
     }
 };
 
-// PUT /api/admin/users/:id/role
 const changeRole = async (req, res) => {
     try {
         const { role } = req.body;
-        if (!["user", "admin"].includes(role)) {
+        if (!["user", "admin", "superadmin"].includes(role)) {
             return res.status(400).json({ message: "Invalid role" });
+        }
+
+        if (req.user.role !== 'superadmin') {
+            return res.status(403).json({ message: "Only superadmins can change user roles" });
         }
 
         const user = await userModel.findById(req.params.id);

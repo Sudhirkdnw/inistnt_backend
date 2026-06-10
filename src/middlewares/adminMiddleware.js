@@ -7,6 +7,10 @@ function adminMiddleware(req, res, next) {
         return res.status(403).json({ message: "Admin access required" });
     }
 
+    if (!req.isAdminSession) {
+        return res.status(403).json({ message: "Admin operations require OTP verification. Please login through the admin portal." });
+    }
+
     next();
 }
 

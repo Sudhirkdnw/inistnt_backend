@@ -28,6 +28,7 @@ async function authMiddleware(req, res, next) {
         userModel.updateOne({ _id: user._id }, { lastActive: new Date() }).catch(e => console.error("Last active update failed:", e.message));
 
         req.user = user;
+        req.isAdminSession = decoded.isAdminSession === true;
         next();
     } catch (jwtErr) {
         return res.status(401).json({ message: "Invalid token, please login again" });
