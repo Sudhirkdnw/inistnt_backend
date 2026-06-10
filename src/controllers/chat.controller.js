@@ -61,14 +61,31 @@ async function getConversations(req, res) {
             .sort({ updatedAt: -1 })
             .lean();
 
-        const conversationsWithUnread = await Promise.all(conversations.map(async (conv) => {
-            const unreadCount = await Message.countDocuments({
-                conversation: conv._id,
-                sender: { $ne: userId },
-                readBy: { $ne: userId }
-            });
-            return { ...conv, unreadCount };
-        }));
+        const conversationIds = conversations.map(c => c._id);
+        const unreadCounts = await Message.aggregate([
+            {
+                $match: {
+                    conversation: { $in: conversationIds },
+                    sender: { $ne: userId },
+                    readBy: { $ne: userId }
+                }
+            },
+            {
+                $group: {
+                    _id: "$conversation",
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const unreadMap = {};
+        unreadCounts.forEach(item => {
+            unreadMap[item._id.toString()] = item.count;
+        });
+
+        const conversationsWithUnread = conversations.map(conv => {
+            return { ...conv, unreadCount: unreadMap[conv._id.toString()] || 0 };
+        });
 
         const sanitizedConversations = conversationsWithUnread.map(c => anonymizeParticipants(c, userId));
 
