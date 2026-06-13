@@ -43,7 +43,8 @@ const ALLOWED_ORIGINS = [
     ...(process.env.CORS_ALLOWED_ORIGINS ? process.env.CORS_ALLOWED_ORIGINS.split(',') : []),
     'https://hykee.in',
     'https://www.hykee.in',
-    'https://admin.hykee.in'
+    'https://admin.hykee.in',
+
 ].filter(Boolean).map(o => o.trim());
 
 app.use(cors({
