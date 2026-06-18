@@ -48,7 +48,7 @@ const io = new Server(server, {
             if (isAllowed) {
                 return callback(null, true);
             }
-            callback(new Error(`CORS: origin ${origin} not allowed`));
+            callback(null, false);
         },
         methods: ["GET", "POST"],
         credentials: true

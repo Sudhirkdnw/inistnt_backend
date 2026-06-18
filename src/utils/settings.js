@@ -135,6 +135,7 @@ const loadSettings = async () => {
             // Automatically refresh in-memory settings cache every 10 seconds across all PM2 cluster workers
             setInterval(async () => {
                 try {
+                    if (mongoose.connection.readyState !== 1) return; // Skip if db disconnected
                     const settings = await Setting.find();
                     cachedSettings = settings.reduce((acc, s) => {
                         acc[s.key] = s.value;
