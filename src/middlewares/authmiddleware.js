@@ -2,11 +2,13 @@ const jwt = require("jsonwebtoken");
 const userModel = require("../models/user.model");
 
 async function authMiddleware(req, res, next) {
-    let token = req.cookies.token;
+    let token = null;
 
     // Support Bearer Token in Authorization Header
-    if (!token && req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+    if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
         token = req.headers.authorization.split(" ")[1];
+    } else if (req.cookies && req.cookies.token) {
+        token = req.cookies.token;
     }
 
     if (!token) {
@@ -36,10 +38,12 @@ async function authMiddleware(req, res, next) {
 }
 
 async function softAuthMiddleware(req, res, next) {
-    let token = req.cookies.token;
+    let token = null;
 
-    if (!token && req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+    if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
         token = req.headers.authorization.split(" ")[1];
+    } else if (req.cookies && req.cookies.token) {
+        token = req.cookies.token;
     }
 
     if (!token) return next();
