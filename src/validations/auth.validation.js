@@ -34,7 +34,8 @@ const loginSchema = {
         }).trim().toLowerCase(),
         password: z.string({
             required_error: "Password is required"
-        })
+        }),
+        adminLogin: z.boolean().optional()
     })
 };
 
