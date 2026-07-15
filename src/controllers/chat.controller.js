@@ -320,11 +320,12 @@ async function sendMessage(req, res) {
         let mediaType = undefined;
 
         if (req.file) {
-            mediaUrl = await uploadImage(req.file.buffer, {}, req.file.mimetype);
+            const mimetype = req.file.mimetype || "";
+            mediaUrl = await uploadImage(req.file.buffer, {}, mimetype);
 
-            if (req.file.mimetype.startsWith("image/")) mediaType = "image";
-            else if (req.file.mimetype.startsWith("video/")) mediaType = "video";
-            else if (req.file.mimetype.startsWith("audio/")) mediaType = "audio";
+            if (mimetype.startsWith("image/")) mediaType = "image";
+            else if (mimetype.startsWith("video/")) mediaType = "video";
+            else if (mimetype.startsWith("audio/")) mediaType = "audio";
         }
 
         if ((!text || !text.trim()) && !mediaUrl) {

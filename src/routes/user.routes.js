@@ -7,6 +7,7 @@ const cacheMiddleware = require("../middlewares/cacheMiddleware");
 
 const {
     getUserProfile, updateProfile, updateAvatar,
+    updateCover, uploadResume,
     requestEmailVerification, verifyEmail,
     toggleFollow, getFollowers, getFollowing,
     searchUsers, getSuggestions,
@@ -22,6 +23,8 @@ router.post("/push-token", authMiddleware, savePushToken);
 router.get("/:id", authMiddleware, cacheMiddleware(60), getUserProfile);
 router.put("/edit", authMiddleware, updateProfile);
 router.put("/avatar", authMiddleware, upload.single("avatar"), updateAvatar);
+router.put("/cover", authMiddleware, upload.single("cover"), updateCover);
+router.put("/resume", authMiddleware, upload.single("resume"), uploadResume);
 router.post("/:id/follow", authMiddleware, toggleFollow);
 router.post("/:id/follow-request/accept", authMiddleware, acceptFollowRequest);
 router.post("/:id/follow-request/decline", authMiddleware, declineFollowRequest);

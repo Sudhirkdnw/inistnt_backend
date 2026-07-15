@@ -16,7 +16,7 @@ const { sendVerificationEmail } = require("../services/emailService");
 async function getUserProfile(req, res) {
     try {
         const user = await userModel.findById(req.params.id)
-            .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt isPremium followRequests")
+            .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt isPremium followRequests coverPhoto university branch semester gradYear skills interests goals github linkedin portfolio resume achievements certifications communitiesJoined")
             .populate("followers", "username fullName avatar")
             .populate("following", "username fullName avatar")
             .lean();
@@ -34,11 +34,58 @@ async function getUserProfile(req, res) {
 
         let responseUser = user;
 
+        // Compute Mutual Connections (users both current user and target user follow)
+        let mutualConnections = [];
+        if (!isOwner) {
+            const currentUserFull = await userModel.findById(req.user._id).select("following").lean();
+            const myFollowing = (currentUserFull?.following || []).map(id => id.toString());
+            const theirFollowing = (user.following || []).map(f => f._id.toString());
+            const mutualIds = myFollowing.filter(id => theirFollowing.includes(id));
+            
+            mutualConnections = await userModel.find({ _id: { $in: mutualIds } })
+                .select("username fullName avatar")
+                .limit(10)
+                .lean();
+        }
+
+        // Compute Friends (mutual followers of the target user)
+        const followerIds = (user.followers || []).map(f => f._id.toString());
+        const followingIds = (user.following || []).map(f => f._id.toString());
+        const mutualFollowIds = followerIds.filter(id => followingIds.includes(id));
+        const friends = await userModel.find({ _id: { $in: mutualFollowIds } })
+            .select("username fullName avatar")
+            .limit(10)
+            .lean();
+
+        // Query Activity Stats
+        const confessionsCount = await Confession.countDocuments({ user: targetUserId, isSoftDeleted: { $ne: true } });
+        const postModel = require("../models/post.model");
+        const postsCount = await postModel.countDocuments({ user: targetUserId });
+        const commentsCount = await Comment.countDocuments({ user: targetUserId });
+
+        responseUser.stats = {
+            confessionsCount,
+            postsCount,
+            commentsCount
+        };
+        responseUser.friends = friends;
+        responseUser.mutualConnections = mutualConnections;
+
         if (responseUser.isPrivate && !isOwner && !isMutualFollow) {
             // Scrub private data
             responseUser.followers = [];
             responseUser.following = [];
             responseUser.bio = "";
+            responseUser.skills = [];
+            responseUser.interests = [];
+            responseUser.goals = [];
+            responseUser.github = "";
+            responseUser.linkedin = "";
+            responseUser.portfolio = "";
+            responseUser.resume = "";
+            responseUser.achievements = [];
+            responseUser.certifications = [];
+            responseUser.communitiesJoined = [];
             responseUser.isPrivateHidden = true; // Flag for frontend
             responseUser.datingPhotos = []; // Privacy: Unauthorized users see nothing
         } else {
@@ -133,6 +180,23 @@ async function updateProfile(req, res) {
             user.notificationSoundEnabled = !!req.body.notificationSoundEnabled;
         }
 
+        // Student identity fields
+        if (req.body.coverPhoto !== undefined) user.coverPhoto = req.body.coverPhoto;
+        if (req.body.university !== undefined) user.university = req.body.university;
+        if (req.body.branch !== undefined) user.branch = req.body.branch;
+        if (req.body.semester !== undefined) user.semester = req.body.semester ? Number(req.body.semester) : null;
+        if (req.body.gradYear !== undefined) user.gradYear = req.body.gradYear ? Number(req.body.gradYear) : null;
+        if (req.body.skills !== undefined) user.skills = req.body.skills;
+        if (req.body.interests !== undefined) user.interests = req.body.interests;
+        if (req.body.goals !== undefined) user.goals = req.body.goals;
+        if (req.body.github !== undefined) user.github = req.body.github;
+        if (req.body.linkedin !== undefined) user.linkedin = req.body.linkedin;
+        if (req.body.portfolio !== undefined) user.portfolio = req.body.portfolio;
+        if (req.body.resume !== undefined) user.resume = req.body.resume;
+        if (req.body.achievements !== undefined) user.achievements = req.body.achievements;
+        if (req.body.certifications !== undefined) user.certifications = req.body.certifications;
+        if (req.body.communitiesJoined !== undefined) user.communitiesJoined = req.body.communitiesJoined;
+
         await user.save();
 
         res.status(200).json({ 
@@ -146,7 +210,22 @@ async function updateProfile(req, res) {
                 bio: user.bio,
                 isPrivate: user.isPrivate,
                 isEmailVerified: user.isEmailVerified,
-                notificationSoundEnabled: user.notificationSoundEnabled
+                notificationSoundEnabled: user.notificationSoundEnabled,
+                coverPhoto: user.coverPhoto,
+                university: user.university,
+                branch: user.branch,
+                semester: user.semester,
+                gradYear: user.gradYear,
+                skills: user.skills,
+                interests: user.interests,
+                goals: user.goals,
+                github: user.github,
+                linkedin: user.linkedin,
+                portfolio: user.portfolio,
+                resume: user.resume,
+                achievements: user.achievements,
+                certifications: user.certifications,
+                communitiesJoined: user.communitiesJoined
             }
         });
     } catch (error) {
@@ -896,10 +975,63 @@ async function savePushToken(req, res) {
     }
 }
 
+// PUT /api/users/cover — Update cover photo
+async function updateCover(req, res) {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: "No image provided" });
+        }
+        const { uploadImage } = require("../utils/cloudinary");
+        const mimetype = req.file.mimetype || "";
+        const coverPhotoUrl = await uploadImage(req.file.buffer, {
+            folder: "hykee/covers"
+        }, mimetype);
+
+        const user = await userModel.findByIdAndUpdate(
+            req.user._id,
+            { coverPhoto: coverPhotoUrl },
+            { returnDocument: 'after' }
+        ).select("coverPhoto");
+
+        res.status(200).json({ message: "Cover photo updated successfully", coverPhoto: coverPhotoUrl, user });
+    } catch (err) {
+        console.error("updateCover error:", err);
+        res.status(500).json({ message: err.message });
+    }
+}
+
+// PUT /api/users/resume — Upload resume PDF
+async function uploadResume(req, res) {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: "No file provided" });
+        }
+        const { uploadImage } = require("../utils/cloudinary");
+        const mimetype = req.file.mimetype || "";
+        const resumeUrl = await uploadImage(req.file.buffer, {
+            folder: "hykee/resumes",
+            resource_type: "raw"
+        }, mimetype);
+
+        const user = await userModel.findByIdAndUpdate(
+            req.user._id,
+            { resume: resumeUrl },
+            { returnDocument: 'after' }
+        ).select("resume");
+
+        res.status(200).json({ message: "Resume updated successfully", resume: resumeUrl, user });
+    } catch (err) {
+        console.error("uploadResume error:", err);
+        res.status(500).json({ message: err.message });
+    }
+}
+
 module.exports = {
     getUserProfile,
     updateProfile,
     updateAvatar,
+    updateCover,
+    uploadResume,
     requestEmailVerification,
     verifyEmail,
     requestSoftDelete,

@@ -12,12 +12,13 @@ const notificationRoutes = require('./routes/notification.routes');
 const adminRoutes = require('./routes/admin.routes');
 const aiRoutes = require('./routes/ai.routes');
 const chatRoutes = require('./routes/chat.routes');
-const datingRoutes = require('./routes/dating.routes');
+const campusConnectRoutes = require('./routes/campusConnect.routes');
 const reportRoutes = require('./routes/report.routes');
 const monitoringRoutes = require('./routes/monitoring.routes');
 const collegeRoutes = require('./routes/college.routes');
 const subscriptionRoutes = require('./routes/subscription.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
+const postRoutes = require('./routes/post.routes');
 const cors = require('cors');
 
 const app = express();
@@ -86,12 +87,12 @@ app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false 
 app.use(compression({ level: 6, threshold: 1024 }));
 
 app.use(express.json({
-    limit: "10mb",
+    limit: "50mb",
     verify: (req, res, buf) => {
         req.rawBody = buf;
     }
 }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cookieParser());
 
 const maintenanceMiddleware = require('./middlewares/maintenanceMiddleware');
@@ -119,7 +120,8 @@ app.use("/api/notifications", rateLimiter({ windowMs: 60 * 1000, max: 60, prefix
 app.use("/api/admin", adminRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/chat", rateLimiter({ windowMs: 60 * 1000, max: 200, prefix: 'chat' }), chatRoutes);
-app.use("/api/dating", rateLimiter({ windowMs: 60 * 1000, max: 100, prefix: 'dating' }), datingRoutes);
+app.use("/api/posts", rateLimiter({ windowMs: 60 * 1000, max: 100, prefix: 'posts' }), postRoutes);
+app.use("/api/campus-connect", rateLimiter({ windowMs: 60 * 1000, max: 100, prefix: 'campus_connect' }), campusConnectRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/settings", settingsRoutes);

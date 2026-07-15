@@ -101,6 +101,74 @@ const userSchema = new mongoose.Schema({
         trim: true,
         default: ""
     },
+    coverPhoto: {
+        type: String,
+        default: ""
+    },
+    university: {
+        type: String,
+        trim: true,
+        default: ""
+    },
+    branch: {
+        type: String,
+        trim: true,
+        default: ""
+    },
+    semester: {
+        type: Number,
+        default: null
+    },
+    gradYear: {
+        type: Number,
+        default: null
+    },
+    skills: [{
+        type: String,
+        trim: true
+    }],
+    interests: [{
+        type: String,
+        trim: true
+    }],
+    goals: [{
+        type: String,
+        trim: true
+    }],
+    github: {
+        type: String,
+        trim: true,
+        default: ""
+    },
+    linkedin: {
+        type: String,
+        trim: true,
+        default: ""
+    },
+    portfolio: {
+        type: String,
+        trim: true,
+        default: ""
+    },
+    resume: {
+        type: String,
+        default: ""
+    },
+    achievements: [{
+        title: { type: String, trim: true },
+        description: { type: String, trim: true },
+        date: { type: Date }
+    }],
+    certifications: [{
+        name: { type: String, trim: true },
+        issuer: { type: String, trim: true },
+        issueDate: { type: Date },
+        credentialUrl: { type: String, trim: true }
+    }],
+    communitiesJoined: [{
+        type: String,
+        trim: true
+    }],
     collegeEmail: {
         type: String,
         trim: true,
