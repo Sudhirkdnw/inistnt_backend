@@ -151,5 +151,38 @@ router.post("/premium/revoke", requirePermission("premium", "update"), revokePre
 router.post("/premium/cancel-subscription", requirePermission("premium", "update"), cancelSubscriptionAdmin);
 router.get("/premium/subscribers", requirePermission("premium", "view"), getPremiumSubscribers);
 router.get("/premium/analytics", requirePermission("premium", "view"), getPremiumAnalytics);
+const ccAdmin = require("../controllers/adminCampusConnect.controller");
+
+// Campus Connect Control Center
+router.get("/campus-connect/stats", requirePermission("analytics", "view"), ccAdmin.getStats);
+router.get("/campus-connect/charts", requirePermission("analytics", "view"), ccAdmin.getCharts);
+router.get("/campus-connect/mentors", requirePermission("userManagement", "view"), ccAdmin.getMentors);
+router.put("/campus-connect/mentors/:id", requirePermission("userManagement", "update"), ccAdmin.updateMentor);
+router.get("/campus-connect/connections", requirePermission("userManagement", "view"), ccAdmin.getConnections);
+router.post("/campus-connect/connections/force-disconnect", requirePermission("userManagement", "update"), ccAdmin.forceDisconnect);
+
+// Skills
+router.get("/campus-connect/skills", requirePermission("userManagement", "view"), ccAdmin.getSkills);
+router.post("/campus-connect/skills", requirePermission("userManagement", "create"), ccAdmin.createSkill);
+router.put("/campus-connect/skills/:id", requirePermission("userManagement", "update"), ccAdmin.updateSkill);
+router.delete("/campus-connect/skills/:id", requirePermission("userManagement", "delete"), ccAdmin.deleteSkill);
+
+// Interests
+router.get("/campus-connect/interests", requirePermission("userManagement", "view"), ccAdmin.getInterests);
+router.post("/campus-connect/interests", requirePermission("userManagement", "create"), ccAdmin.createInterest);
+router.put("/campus-connect/interests/:id", requirePermission("userManagement", "update"), ccAdmin.updateInterest);
+router.delete("/campus-connect/interests/:id", requirePermission("userManagement", "delete"), ccAdmin.deleteInterest);
+
+// Goals
+router.get("/campus-connect/goals", requirePermission("userManagement", "view"), ccAdmin.getGoals);
+router.post("/campus-connect/goals", requirePermission("userManagement", "create"), ccAdmin.createGoal);
+router.put("/campus-connect/goals/:id", requirePermission("userManagement", "update"), ccAdmin.updateGoal);
+router.delete("/campus-connect/goals/:id", requirePermission("userManagement", "delete"), ccAdmin.deleteGoal);
+
+// Communities
+router.get("/campus-connect/communities", requirePermission("userManagement", "view"), ccAdmin.getCommunities);
+router.post("/campus-connect/communities", requirePermission("userManagement", "create"), ccAdmin.createCommunity);
+router.put("/campus-connect/communities/:id", requirePermission("userManagement", "update"), ccAdmin.updateCommunity);
+router.delete("/campus-connect/communities/:id", requirePermission("userManagement", "delete"), ccAdmin.deleteCommunity);
 
 module.exports = router;

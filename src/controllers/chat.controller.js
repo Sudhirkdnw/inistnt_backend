@@ -116,18 +116,23 @@ async function getOrCreateDM(req, res) {
         // 2. Requester follows target user (I follow them — meaning they accepted/they're public to me)
         // In practice: both users must follow each other for a private user to be messaged
         if (targetUser.isPrivate) {
-            const targetFollowsMe = targetUser.following.some(
-                (id) => id.toString() === currentUserId.toString()
-            );
-            const iFollowTarget = targetUser.followers.some(
-                (id) => id.toString() === currentUserId.toString()
-            );
+            const { CampusConnectProfile } = require("../models/campusConnect.model");
+            const isMentor = await CampusConnectProfile.findOne({ user: userId, mentorMode: true });
 
-            if (!targetFollowsMe || !iFollowTarget) {
-                return res.status(403).json({
-                    message: "This account is private. You can only message users who follow you back.",
-                    isPrivate: true
-                });
+            if (!isMentor) {
+                const targetFollowsMe = targetUser.following.some(
+                    (id) => id.toString() === currentUserId.toString()
+                );
+                const iFollowTarget = targetUser.followers.some(
+                    (id) => id.toString() === currentUserId.toString()
+                );
+
+                if (!targetFollowsMe || !iFollowTarget) {
+                    return res.status(403).json({
+                        message: "This account is private. You can only message users who follow you back.",
+                        isPrivate: true
+                    });
+                }
             }
         }
         // ─────────────────────────────────────────────────────────────────────
