@@ -21,17 +21,17 @@ function computeCompatibility(myProfile, myUser, theirProfile, theirUser) {
 
     // Same branch (15 pts)
     if (
-        myProfile.branch &&
-        theirProfile.branch &&
-        myProfile.branch.trim().toLowerCase() === theirProfile.branch.trim().toLowerCase()
+        myUser.branch &&
+        theirUser.branch &&
+        myUser.branch.trim().toLowerCase() === theirUser.branch.trim().toLowerCase()
     ) {
         score += 15;
         reasons.push("Same Branch");
     }
 
     // Shared skills (max 20 pts — 4 pts each, up to 5)
-    const sharedSkills = (myProfile.skills || []).filter(s =>
-        (theirProfile.skills || []).map(x => x.toLowerCase()).includes(s.toLowerCase())
+    const sharedSkills = (myUser.skills || []).filter(s =>
+        (theirUser.skills || []).map(x => x.toLowerCase()).includes(s.toLowerCase())
     );
     if (sharedSkills.length > 0) {
         const skillPts = Math.min(sharedSkills.length * 4, 20);
@@ -40,8 +40,8 @@ function computeCompatibility(myProfile, myUser, theirProfile, theirUser) {
     }
 
     // Shared interests (max 15 pts — 3 pts each, up to 5)
-    const sharedInterests = (myProfile.interests || []).filter(i =>
-        (theirProfile.interests || []).map(x => x.toLowerCase()).includes(i.toLowerCase())
+    const sharedInterests = (myUser.interests || []).filter(i =>
+        (theirUser.interests || []).map(x => x.toLowerCase()).includes(i.toLowerCase())
     );
     if (sharedInterests.length > 0) {
         score += Math.min(sharedInterests.length * 3, 15);
@@ -49,8 +49,8 @@ function computeCompatibility(myProfile, myUser, theirProfile, theirUser) {
     }
 
     // Shared goals (max 10 pts — 5 pts each, up to 2)
-    const sharedGoals = (myProfile.goals || []).filter(g =>
-        (theirProfile.goals || []).includes(g)
+    const sharedGoals = (myUser.goals || []).filter(g =>
+        (theirUser.goals || []).includes(g)
     );
     if (sharedGoals.length > 0) {
         score += Math.min(sharedGoals.length * 5, 10);
@@ -75,12 +75,19 @@ function computeCompatibility(myProfile, myUser, theirProfile, theirUser) {
 async function setupProfile(req, res) {
     try {
         const userId = req.user._id;
-        const { intents, locationFilter, branch, semester, skills, interests, goals, bio, onboardingDone, mentorMode, mentorTags } = req.body;
+        const { intents, locationFilter, onboardingDone, mentorMode, mentorTags } = req.body;
 
-        // Phone filter on bio
-        const { containsPhoneNumber } = require("../utils/phoneFilter");
-        if (bio && containsPhoneNumber(bio)) {
-            return res.status(400).json({ message: "Sharing phone numbers is not allowed in bio." });
+        const user = await userModel.findById(userId);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        // Onboarding validation
+        if (onboardingDone) {
+            if (!user.photos || user.photos.length === 0) {
+                return res.status(400).json({ message: "At least one profile photo is required to enter Campus Connect." });
+            }
+            if (!user.branch) {
+                return res.status(400).json({ message: "Please specify your branch in your profile first." });
+            }
         }
 
         let profile = await CampusConnectProfile.findOne({ user: userId });
@@ -88,12 +95,6 @@ async function setupProfile(req, res) {
         if (profile) {
             if (intents !== undefined) profile.intents = intents;
             if (locationFilter !== undefined) profile.locationFilter = locationFilter;
-            if (branch !== undefined) profile.branch = branch;
-            if (semester !== undefined) profile.semester = semester;
-            if (skills !== undefined) profile.skills = skills;
-            if (interests !== undefined) profile.interests = interests;
-            if (goals !== undefined) profile.goals = goals;
-            if (bio !== undefined) profile.bio = bio;
             if (onboardingDone !== undefined) profile.onboardingDone = onboardingDone;
             if (mentorMode !== undefined) profile.mentorMode = mentorMode;
             if (mentorTags !== undefined) profile.mentorTags = mentorTags;
@@ -103,20 +104,14 @@ async function setupProfile(req, res) {
                 user: userId,
                 intents: intents || [],
                 locationFilter: locationFilter || "my_college",
-                branch: branch || "",
-                semester: semester || null,
-                skills: skills || [],
-                interests: interests || [],
-                goals: goals || [],
-                bio: bio || "",
                 onboardingDone: onboardingDone || false,
                 mentorMode: false,
                 mentorTags: []
             });
         }
 
-        await profile.populate("user", "username fullName avatar collegeName verificationStatus");
-        return res.status(200).json({ message: "Profile saved", profile });
+        await profile.populate("user", "username fullName avatar collegeName verificationStatus branch semester skills interests goals photos");
+        return res.status(200).json({ message: "Profile preferences saved", profile });
     } catch (err) {
         console.error("setupProfile error:", err);
         return res.status(500).json({ message: "Server error" });
@@ -127,14 +122,15 @@ async function setupProfile(req, res) {
 async function getMyProfile(req, res) {
     try {
         const profile = await CampusConnectProfile.findOne({ user: req.user._id })
-            .populate("user", "username fullName avatar collegeName verificationStatus")
+            .populate("user", "username fullName avatar collegeName verificationStatus branch semester skills interests goals photos")
             .lean();
 
         if (!profile) {
             return res.status(200).json({ hasProfile: false, profile: null, branchSkills: BRANCH_SKILLS });
         }
 
-        const branchSkills = BRANCH_SKILLS[profile.branch] || BRANCH_SKILLS["Other"];
+        const userObj = profile.user || {};
+        const branchSkills = BRANCH_SKILLS[userObj.branch] || BRANCH_SKILLS["Other"];
         return res.status(200).json({ hasProfile: true, profile, branchSkills, allBranchSkills: BRANCH_SKILLS });
     } catch (err) {
         console.error("getMyProfile error:", err);
@@ -157,7 +153,7 @@ async function getDiscovery(req, res) {
             return res.status(400).json({ message: "Please complete your Campus Connect profile first." });
         }
 
-        const myUser = await userModel.findById(userId).select("collegeName").lean();
+        const myUser = await userModel.findById(userId).select("collegeName branch semester skills interests goals photos").lean();
 
         // Fetch all user IDs already acted on by this user
         const actedOn = await CampusConnectAction.find({ actor: userId }).select("targetUser").lean();
@@ -181,9 +177,9 @@ async function getDiscovery(req, res) {
             user: { $nin: [userId, ...actedOnIds], ...((collegeFilter.user && myProfile.locationFilter === "my_college") ? {} : {}) },
             ...(myProfile.locationFilter === "my_college" && collegeFilter.user ? { user: { $in: collegeFilter.user.$in.filter(id => !actedOnIds.some(aid => String(aid) === String(id))) } } : { user: { $nin: [userId, ...actedOnIds] } }),
         })
-            .select("user intents branch semester skills interests goals bio photos mentorMode onboardingDone")
+            .select("user intents mentorMode onboardingDone")
             .limit(30)
-            .populate("user", "username fullName avatar collegeName verificationStatus")
+            .populate("user", "username fullName avatar collegeName verificationStatus branch semester skills interests goals photos bio")
             .lean();
 
         // Filter orphaned profiles
@@ -202,9 +198,8 @@ async function getDiscovery(req, res) {
         });
 
         // ── Compute compatibility scores ───────────────────────────────
-        const myUserFull = await userModel.findById(userId).select("collegeName").lean();
         const scored = candidates.map(c => {
-            const { score, reasons } = computeCompatibility(myProfile, myUserFull, c, c.user);
+            const { score, reasons } = computeCompatibility(myProfile, myUser, c, c.user);
             return { ...c, compatibility: score, compatibilityReasons: reasons };
         });
 
@@ -543,67 +538,6 @@ async function toggleMentorMode(req, res) {
     }
 }
 
-// ─── Upload Photo ─────────────────────────────────────────────────────────────
-async function uploadCCPhoto(req, res) {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ message: "No image provided" });
-        }
-
-        const userId = req.user._id;
-        let profile = await CampusConnectProfile.findOne({ user: userId });
-
-        if (!profile) {
-            profile = await CampusConnectProfile.create({
-                user: userId,
-                intents: [],
-                skills: [],
-                interests: [],
-                goals: [],
-                onboardingDone: false
-            });
-        }
-
-        if (profile.photos.length >= 6) {
-            return res.status(400).json({ message: "Maximum 6 photos allowed" });
-        }
-
-        const mimetype = req.file.mimetype || "";
-        const photoUrl = await uploadImage(req.file.buffer, {
-            folder: "hykee/campus-connect",
-            transformation: [{ width: 800, height: 800, crop: "fill", gravity: "auto" }]
-        }, mimetype);
-
-        profile.photos.push(photoUrl);
-        await profile.save();
-
-        return res.status(200).json({ message: "Photo uploaded", photoUrl, profile });
-    } catch (err) {
-        console.error("uploadCCPhoto error:", err);
-        return res.status(500).json({ message: "Server error" });
-    }
-}
-
-// ─── Delete Photo ─────────────────────────────────────────────────────────────
-async function deleteCCPhoto(req, res) {
-    try {
-        const { photoUrl } = req.body;
-        const userId = req.user._id;
-
-        const profile = await CampusConnectProfile.findOne({ user: userId });
-        if (!profile) return res.status(404).json({ message: "Profile not found" });
-
-        await deleteImage(photoUrl);
-        profile.photos = profile.photos.filter(p => p !== photoUrl);
-        await profile.save();
-
-        return res.status(200).json({ message: "Photo deleted", profile });
-    } catch (err) {
-        console.error("deleteCCPhoto error:", err);
-        return res.status(500).json({ message: "Server error" });
-    }
-}
-
 // ─── Get Branch Skills ────────────────────────────────────────────────────────
 async function getBranchSkills(req, res) {
     try {
@@ -611,6 +545,98 @@ async function getBranchSkills(req, res) {
         const skills = BRANCH_SKILLS[branch] || BRANCH_SKILLS["Other"];
         return res.status(200).json({ branch, skills, allBranches: Object.keys(BRANCH_SKILLS) });
     } catch (err) {
+        return res.status(500).json({ message: "Server error" });
+    }
+}
+
+// ─── Get CC Preferences ───────────────────────────────────────────────────────
+async function getPreferences(req, res) {
+    try {
+        const profile = await CampusConnectProfile.findOne({ user: req.user._id }).lean();
+        if (!profile) {
+            return res.status(200).json({
+                preferences: {
+                    intents: [],
+                    locationFilter: "my_college",
+                    isActive: true,
+                    preferredBranches: [],
+                    preferredSemesters: [],
+                    preferredSkills: [],
+                    preferredInterests: [],
+                    preferredCommunities: [],
+                    verifiedOnly: false,
+                    allowConnectionRequests: true,
+                    allowMessagesAfterConnect: true,
+                    showOnlineStatus: true,
+                    hideFromSuggestions: false,
+                    aiPriorities: ["skills", "interests", "goals", "branch", "semester", "communities", "mutuals"],
+                    mentorMode: false,
+                    mentorTags: []
+                }
+            });
+        }
+        return res.status(200).json({ preferences: profile });
+    } catch (err) {
+        console.error("getPreferences error:", err);
+        return res.status(500).json({ message: "Server error" });
+    }
+}
+
+// ─── Update CC Preferences ────────────────────────────────────────────────────
+async function updatePreferences(req, res) {
+    try {
+        const userId = req.user._id;
+        const {
+            intents, locationFilter, isActive,
+            preferredBranches, preferredSemesters, preferredSkills,
+            preferredInterests, preferredCommunities,
+            verifiedOnly, allowConnectionRequests, allowMessagesAfterConnect,
+            showOnlineStatus, hideFromSuggestions, aiPriorities,
+            mentorMode, mentorTags
+        } = req.body;
+
+        const VALID_AI = ["skills", "interests", "goals", "branch", "semester", "communities", "mutuals"];
+
+        let profile = await CampusConnectProfile.findOne({ user: userId });
+        if (!profile) {
+            return res.status(404).json({ message: "Campus Connect profile not found. Please complete onboarding first." });
+        }
+
+        // Discovery intents & location
+        if (intents !== undefined) profile.intents = intents;
+        if (locationFilter !== undefined) profile.locationFilter = locationFilter;
+        if (isActive !== undefined) profile.isActive = isActive;
+
+        // Discovery filters (weights)
+        if (preferredBranches !== undefined) profile.preferredBranches = preferredBranches;
+        if (preferredSemesters !== undefined) profile.preferredSemesters = preferredSemesters;
+        if (preferredSkills !== undefined) profile.preferredSkills = preferredSkills;
+        if (preferredInterests !== undefined) profile.preferredInterests = preferredInterests;
+        if (preferredCommunities !== undefined) profile.preferredCommunities = preferredCommunities;
+
+        // Visibility & privacy
+        if (verifiedOnly !== undefined) profile.verifiedOnly = verifiedOnly;
+        if (allowConnectionRequests !== undefined) profile.allowConnectionRequests = allowConnectionRequests;
+        if (allowMessagesAfterConnect !== undefined) profile.allowMessagesAfterConnect = allowMessagesAfterConnect;
+        if (showOnlineStatus !== undefined) profile.showOnlineStatus = showOnlineStatus;
+        if (hideFromSuggestions !== undefined) profile.hideFromSuggestions = hideFromSuggestions;
+
+        // AI priorities — validate and set
+        if (aiPriorities !== undefined) {
+            const filtered = aiPriorities.filter(k => VALID_AI.includes(k));
+            // ensure all keys present (append any missing at end)
+            const missing = VALID_AI.filter(k => !filtered.includes(k));
+            profile.aiPriorities = [...filtered, ...missing];
+        }
+
+        // Mentor
+        if (mentorMode !== undefined) profile.mentorMode = mentorMode;
+        if (mentorTags !== undefined) profile.mentorTags = mentorTags;
+
+        await profile.save();
+        return res.status(200).json({ message: "Preferences saved", preferences: profile });
+    } catch (err) {
+        console.error("updatePreferences error:", err);
         return res.status(500).json({ message: "Server error" });
     }
 }
@@ -629,7 +655,7 @@ module.exports = {
     updateTeamListing,
     getMentors,
     toggleMentorMode,
-    uploadCCPhoto,
-    deleteCCPhoto,
-    getBranchSkills
+    getBranchSkills,
+    getPreferences,
+    updatePreferences
 };

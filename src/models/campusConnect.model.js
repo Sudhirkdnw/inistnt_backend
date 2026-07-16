@@ -17,13 +17,14 @@ const BRANCH_SKILLS = {
     "Other": ["Leadership", "Communication", "Research", "Writing", "Public Speaking"]
 };
 
+// ── Campus Connect Preferences ONLY (profile data lives in User model) ────────
 const campusConnectSchema = new mongoose.Schema({
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "user",
         required: true
     },
-    // Why they're here — multi-select
+    // Why they're here — multi-select intents
     intents: [{
         type: String,
         enum: [
@@ -38,45 +39,6 @@ const campusConnectSchema = new mongoose.Schema({
         enum: ["my_college", "nearby_colleges", "all"],
         default: "my_college"
     },
-    // Academic profile
-    branch: {
-        type: String,
-        trim: true,
-        default: ""
-    },
-    semester: {
-        type: Number,
-        min: 1,
-        max: 12,
-        default: null
-    },
-    // Skills based on branch + custom
-    skills: [{
-        type: String,
-        trim: true
-    }],
-    // Interests (general lifestyle)
-    interests: [{
-        type: String,
-        trim: true
-    }],
-    // Goals
-    goals: [{
-        type: String,
-        enum: [
-            "internship", "placement", "freelancing", "research",
-            "higher_studies", "startup", "networking", "competitive_exams",
-            "content_creation"
-        ]
-    }],
-    // Bio
-    bio: {
-        type: String,
-        maxlength: 400,
-        default: ""
-    },
-    // Photos
-    photos: [{ type: String }],
     // Active in discovery
     isActive: {
         type: Boolean,
@@ -102,17 +64,56 @@ const campusConnectSchema = new mongoose.Schema({
     onboardingDone: {
         type: Boolean,
         default: false
+    },
+    // ── Discovery Filters (preferences — act as weights, not hard filters) ────
+    preferredBranches: [{ type: String, trim: true }],
+    preferredSemesters: [{ type: Number }],
+    preferredSkills: [{ type: String, trim: true }],
+    preferredInterests: [{ type: String, trim: true }],
+    preferredCommunities: [{ type: String, trim: true }],
+    // ── Visibility & Privacy ──────────────────────────────────────────────────
+    verifiedOnly: {
+        type: Boolean,
+        default: false
+    },
+    allowConnectionRequests: {
+        type: Boolean,
+        default: true
+    },
+    allowMessagesAfterConnect: {
+        type: Boolean,
+        default: true
+    },
+    showOnlineStatus: {
+        type: Boolean,
+        default: true
+    },
+    hideFromSuggestions: {
+        type: Boolean,
+        default: false
+    },
+    // ── AI Recommendation Priority (ordered list of weight keys) ──────────────
+    // Default order: skills > interests > goals > branch > semester > communities > mutuals
+    aiPriorities: {
+        type: [String],
+        default: ["skills", "interests", "goals", "branch", "semester", "communities", "mutuals"],
+        validate: {
+            validator: function(arr) {
+                const valid = ["skills", "interests", "goals", "branch", "semester", "communities", "mutuals"];
+                return arr.every(k => valid.includes(k));
+            },
+            message: "Invalid AI priority key"
+        }
     }
+    // NOTE: branch, semester, skills, interests, goals, bio, photos
+    // have been REMOVED — they now live exclusively in the User model.
 }, { timestamps: true });
 
-// ── Indexes ─────────────────────────────────────────────
+// ── Indexes ──────────────────────────────────────────────────────────────────
 campusConnectSchema.index({ user: 1 }, { unique: true });
-campusConnectSchema.index({ isActive: 1, branch: 1 });
 campusConnectSchema.index({ isActive: 1, intents: 1 });
 campusConnectSchema.index({ mentorMode: 1 });
 campusConnectSchema.index({ "teamListing.isLooking": 1 });
-campusConnectSchema.index({ skills: 1 });
-campusConnectSchema.index({ goals: 1 });
 
 const CampusConnectProfile = mongoose.model("CampusConnectProfile", campusConnectSchema);
 

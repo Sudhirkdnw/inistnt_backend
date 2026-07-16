@@ -418,7 +418,21 @@ async function loginController(req, res) {
                 fullName: user.fullName,
                 avatar: user.avatar,
                 role: user.role,
-                notificationSoundEnabled: user.notificationSoundEnabled
+                notificationSoundEnabled: user.notificationSoundEnabled,
+                // Profile fields needed for CC onboarding & profile display
+                bio: user.bio,
+                isPrivate: user.isPrivate,
+                collegeName: user.collegeName,
+                branch: user.branch,
+                semester: user.semester,
+                gradYear: user.gradYear,
+                photos: user.photos,
+                skills: user.skills,
+                interests: user.interests,
+                goals: user.goals,
+                isPremium: user.isPremium,
+                isVerified: user.isVerified,
+                isEmailVerified: user.isEmailVerified
             }
         });
     } catch (error) {

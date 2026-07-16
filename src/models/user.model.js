@@ -169,6 +169,44 @@ const userSchema = new mongoose.Schema({
         type: String,
         trim: true
     }],
+    // ── Profile Gallery (1–6 photos, first = avatar) ───────────────────────
+    photos: [{
+        type: String,
+        trim: true
+    }],
+    // ── Extended Identity ──────────────────────────────────────────────────
+    gender: {
+        type: String,
+        trim: true,
+        default: ""
+    },
+    dob: {
+        type: Date,
+        default: null
+    },
+    pronouns: {
+        type: String,
+        trim: true,
+        default: ""
+    },
+    website: {
+        type: String,
+        trim: true,
+        default: ""
+    },
+    languages: [{
+        type: String,
+        trim: true
+    }],
+    // ── Campus Connect Visibility Prefs ────────────────────────────────────
+    showOnlineStatus: {
+        type: Boolean,
+        default: true
+    },
+    hideFromSuggestions: {
+        type: Boolean,
+        default: false
+    },
     collegeEmail: {
         type: String,
         trim: true,

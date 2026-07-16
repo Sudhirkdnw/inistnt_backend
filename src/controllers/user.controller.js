@@ -16,7 +16,7 @@ const { sendVerificationEmail } = require("../services/emailService");
 async function getUserProfile(req, res) {
     try {
         const user = await userModel.findById(req.params.id)
-            .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt isPremium followRequests coverPhoto university branch semester gradYear skills interests goals github linkedin portfolio resume achievements certifications communitiesJoined")
+            .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt isPremium followRequests coverPhoto university branch semester gradYear skills interests goals github linkedin portfolio resume achievements certifications communitiesJoined photos gender dob pronouns website languages showOnlineStatus hideFromSuggestions")
             .populate("followers", "username fullName avatar")
             .populate("following", "username fullName avatar")
             .lean();
@@ -87,37 +87,7 @@ async function getUserProfile(req, res) {
             responseUser.certifications = [];
             responseUser.communitiesJoined = [];
             responseUser.isPrivateHidden = true; // Flag for frontend
-            responseUser.datingPhotos = []; // Privacy: Unauthorized users see nothing
-        } else {
-            // Check if requester has premium if premium requirement is ON
-            let isRequesterPremium = true;
-            let settings = await getPremiumSettingsCached();
-            const isPremiumRequired = settings ? settings.isPremiumRequired : true;
-
-            if (isPremiumRequired && req.user.role !== "admin") {
-                const now = new Date();
-                isRequesterPremium = req.user.isPremium && req.user.premiumExpireAt && new Date(req.user.premiumExpireAt) > now;
-            }
-
-            if (!isRequesterPremium) {
-                responseUser.datingPhotos = [];
-            } else {
-                // Fetch dating photos
-                // Logic: Owner sees photos even if not active. 
-                // Others only see photos if dating is active.
-                const query = { user: targetUserId };
-                if (!isOwner) query.isDatingActive = true;
-                
-                const datingProfile = await DatingProfile.findOne(query);
-                if (datingProfile) {
-                    // Use photoOrder if it exists, fallback to photos
-                    responseUser.datingPhotos = datingProfile.photoOrder && datingProfile.photoOrder.length > 0 
-                        ? datingProfile.photoOrder 
-                        : datingProfile.photos;
-                } else {
-                    responseUser.datingPhotos = [];
-                }
-            }
+            responseUser.photos = []; // Privacy: Unauthorized users see nothing
         }
 
         responseUser.isFollowingUser = isFollowing;
@@ -196,6 +166,14 @@ async function updateProfile(req, res) {
         if (req.body.achievements !== undefined) user.achievements = req.body.achievements;
         if (req.body.certifications !== undefined) user.certifications = req.body.certifications;
         if (req.body.communitiesJoined !== undefined) user.communitiesJoined = req.body.communitiesJoined;
+        // Extended identity
+        if (req.body.gender !== undefined) user.gender = req.body.gender;
+        if (req.body.dob !== undefined) user.dob = req.body.dob || null;
+        if (req.body.pronouns !== undefined) user.pronouns = req.body.pronouns;
+        if (req.body.website !== undefined) user.website = req.body.website;
+        if (req.body.languages !== undefined) user.languages = req.body.languages;
+        if (req.body.showOnlineStatus !== undefined) user.showOnlineStatus = req.body.showOnlineStatus;
+        if (req.body.hideFromSuggestions !== undefined) user.hideFromSuggestions = req.body.hideFromSuggestions;
 
         await user.save();
 
@@ -225,7 +203,15 @@ async function updateProfile(req, res) {
                 resume: user.resume,
                 achievements: user.achievements,
                 certifications: user.certifications,
-                communitiesJoined: user.communitiesJoined
+                communitiesJoined: user.communitiesJoined,
+                photos: user.photos,
+                gender: user.gender,
+                dob: user.dob,
+                pronouns: user.pronouns,
+                website: user.website,
+                languages: user.languages,
+                showOnlineStatus: user.showOnlineStatus,
+                hideFromSuggestions: user.hideFromSuggestions
             }
         });
     } catch (error) {
@@ -1026,6 +1012,97 @@ async function uploadResume(req, res) {
     }
 }
 
+// ─── User Photo Gallery CRUD ───────────────────────────────────────────────────
+async function uploadUserPhoto(req, res) {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: "No image provided" });
+        }
+
+        const user = await userModel.findById(req.user._id);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        if (user.photos.length >= 6) {
+            return res.status(400).json({ message: "Maximum 6 photos allowed" });
+        }
+
+        const { uploadImage } = require("../utils/cloudinary");
+        const mimetype = req.file.mimetype || "";
+        const photoUrl = await uploadImage(req.file.buffer, {
+            folder: "hykee/user-gallery",
+            transformation: [{ width: 800, height: 800, crop: "fill", gravity: "auto" }]
+        }, mimetype);
+
+        user.photos.push(photoUrl);
+        if (user.photos.length === 1 || !user.avatar) {
+            user.avatar = photoUrl;
+        }
+        await user.save();
+
+        res.status(200).json({ message: "Photo uploaded successfully", photoUrl, photos: user.photos, avatar: user.avatar });
+    } catch (err) {
+        console.error("uploadUserPhoto error:", err);
+        res.status(500).json({ message: err.message });
+    }
+}
+
+async function deleteUserPhoto(req, res) {
+    try {
+        const { photoUrl } = req.body;
+        if (!photoUrl) {
+            return res.status(400).json({ message: "Photo URL is required" });
+        }
+
+        const user = await userModel.findById(req.user._id);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        if (user.photos.length <= 1) {
+            return res.status(400).json({ message: "At least one profile photo is required." });
+        }
+
+        const { deleteImage } = require("../utils/cloudinary");
+        await deleteImage(photoUrl);
+
+        user.photos = user.photos.filter(p => p !== photoUrl);
+
+        if (user.avatar === photoUrl) {
+            user.avatar = user.photos[0] || "";
+        }
+        await user.save();
+
+        res.status(200).json({ message: "Photo deleted successfully", photos: user.photos, avatar: user.avatar });
+    } catch (err) {
+        console.error("deleteUserPhoto error:", err);
+        res.status(500).json({ message: err.message });
+    }
+}
+
+async function reorderUserPhotos(req, res) {
+    try {
+        const { photos } = req.body;
+        if (!Array.isArray(photos) || photos.length === 0) {
+            return res.status(400).json({ message: "Photos list is required" });
+        }
+
+        const user = await userModel.findById(req.user._id);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        const allValid = photos.every(p => user.photos.includes(p));
+        if (!allValid) {
+            return res.status(400).json({ message: "Invalid photos provided in list" });
+        }
+
+        user.photos = photos;
+        user.avatar = photos[0] || "";
+        await user.save();
+
+        res.status(200).json({ message: "Photos reordered successfully", photos: user.photos, avatar: user.avatar });
+    } catch (err) {
+        console.error("reorderUserPhotos error:", err);
+        res.status(500).json({ message: err.message });
+    }
+}
+
 module.exports = {
     getUserProfile,
     updateProfile,
@@ -1044,5 +1121,8 @@ module.exports = {
     getSuggestions,
     acceptFollowRequest,
     declineFollowRequest,
-    savePushToken
+    savePushToken,
+    uploadUserPhoto,
+    deleteUserPhoto,
+    reorderUserPhotos
 };

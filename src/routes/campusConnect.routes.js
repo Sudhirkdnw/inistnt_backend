@@ -20,9 +20,9 @@ const {
     updateTeamListing,
     getMentors,
     toggleMentorMode,
-    uploadCCPhoto,
-    deleteCCPhoto,
-    getBranchSkills
+    getBranchSkills,
+    getPreferences,
+    updatePreferences
 } = require("../controllers/campusConnect.controller");
 
 // All routes require authentication
@@ -33,6 +33,10 @@ router.use(checkPremiumAccess);
 // ── Profile ───────────────────────────────────────────────────────────────────
 router.post("/profile", setupProfile);
 router.get("/profile/me", cacheMiddleware(30), getMyProfile);
+
+// ── Preferences ───────────────────────────────────────────────────────────────
+router.get("/preferences", getPreferences);
+router.put("/preferences", updatePreferences);
 
 // ── Discovery ─────────────────────────────────────────────────────────────────
 router.get("/discovery", cacheMiddleware(30), getDiscovery);
@@ -54,10 +58,6 @@ router.put("/team-listing", updateTeamListing);
 // ── Mentor Mode ───────────────────────────────────────────────────────────────
 router.get("/mentors", cacheMiddleware(60), getMentors);
 router.put("/mentor-mode", toggleMentorMode);
-
-// ── Photos ────────────────────────────────────────────────────────────────────
-router.post("/photos", upload.single("photo"), uploadCCPhoto);
-router.delete("/photos", deleteCCPhoto);
 
 // ── Branch Skills Reference ───────────────────────────────────────────────────
 router.get("/branch-skills/:branch", getBranchSkills);
