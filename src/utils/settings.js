@@ -16,7 +16,7 @@ const syncSettings = async () => {
             { key: 'company_name', value: 'Hykee', description: 'Legal company name', category: 'General' },
             { key: 'company_address', value: 'Greater Noida', description: 'Business address', category: 'General' },
             { key: 'default_language', value: 'en', description: 'System default language', category: 'General' },
-            { key: 'default_currency', value: 'IN', description: 'Platform currency code', category: 'General' },
+            { key: 'default_currency', value: 'INR', description: 'Platform currency code', category: 'General' },
             { key: 'timezone', value: 'UTC', description: 'System default timezone', category: 'General' },
             { key: 'date_format', value: 'MMM DD, YYYY', description: 'Display date format', category: 'General' },
             { key: 'maintenance_mode', value: false, description: 'Disable all user interactions', category: 'Security' },

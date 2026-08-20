@@ -10,14 +10,16 @@ const cache = require('../service/cache.service');
  */
 const getDashboardStats = async (req, res) => {
     try {
-        const userId = req.user._id;
-        const cacheKey = `dashboard:stats:${userId}`;
+        const user = req.user;
+        const userId = user._id;
+        const collegeName = user.collegeName || "";
+        const cacheKey = `dashboard:stats:${userId}:${encodeURIComponent(collegeName)}`;
 
         const stats = await cache.getOrSet(cacheKey, 60, async () => {
             const todayStart = new Date();
             todayStart.setHours(0, 0, 0, 0);
 
-            const [matchCount, commentCount, anonTodayCount, hotTotal] = await Promise.all([
+            const [matchCount, collegeCount, anonTodayCount, hotTotal] = await Promise.all([
                 // 1. Dating matches count
                 datingModel.findOne({ user: userId })
                     .select('matches')
@@ -25,29 +27,31 @@ const getDashboardStats = async (req, res) => {
                     .then(p => p?.matches?.length || 0)
                     .catch(() => 0),
 
-                // 2. Unread comment/reply notifications
-                notificationModel.countDocuments({
-                    recipient: userId,
-                    type: { $in: ['comment', 'reply'] },
-                    isRead: false
-                }).catch(() => 0),
+                // 2. User's College Confessions count
+                collegeName 
+                    ? confessionModel.countDocuments({
+                        isHidden: false,
+                        collegeName: collegeName
+                    }).catch(() => 0)
+                    : 0,
 
-                // 3. Today's anonymous posts (across user's college)
+                // 3. Today's anonymous posts
                 confessionModel.countDocuments({
                     isHidden: false,
                     isAnonymous: true,
                     createdAt: { $gte: todayStart }
                 }).catch(() => 0),
 
-                // 4. Total hot posts count (reuse hot cache if available, else count)
+                // 4. Total hot posts count
                 confessionModel.countDocuments({ isHidden: false }).catch(() => 0)
             ]);
 
             return {
                 crushHints: matchCount,
                 anonymous: anonTodayCount,
-                comments: commentCount,
-                hotPosts: hotTotal
+                collegePosts: collegeCount,
+                hotPosts: hotTotal,
+                userCollege: collegeName
             };
         });
 

@@ -109,23 +109,25 @@ const getFeed = async (req, res) => {
 
         const currentUser = req.user;
 
-        // Optimized query: Avoid pre-fetching all user IDs.
-        // We filter for non-hidden confessions from public users OR users we follow.
+        // Global feed: non-hidden confessions from all users across all colleges and universities
         const filter = {
             isHidden: false,
-            collegeName: currentUser.collegeName || "",
             $or: [
                 { isPrivate: { $ne: true } },
                 { user: { $in: [...(currentUser.following || []), currentUser._id] } }
             ]
         };
 
+        if (req.query.college) {
+            filter.collegeName = req.query.college;
+        }
+
         if (category) filter.category = category;
         if (cursor) filter._id = { $lt: cursor };
 
         const confessions = await confessionModel.find(filter)
-            .select('confessionText category user isAnonymous likes commentCount poll createdAt')
-            .populate("user", "username fullName avatar isPrivate")
+            .select('confessionText category user isAnonymous likes commentCount poll collegeName createdAt')
+            .populate("user", "username fullName avatar isPrivate collegeName")
             .sort({ _id: -1 })
             .limit(limit)
             .lean(); // Use lean for performance
