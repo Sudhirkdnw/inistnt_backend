@@ -46,6 +46,5 @@ const communitySchema = new mongoose.Schema({
 }, { timestamps: true });
 
 communitySchema.index({ isPinned: -1, isFeatured: -1 });
-communitySchema.index({ name: 1 });
 
 module.exports = mongoose.model("Community", communitySchema);

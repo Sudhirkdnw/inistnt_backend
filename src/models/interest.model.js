@@ -29,7 +29,6 @@ const interestSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
-interestSchema.index({ name: 1 });
 interestSchema.index({ isApproved: 1, isActive: 1 });
 
 module.exports = mongoose.model("Interest", interestSchema);

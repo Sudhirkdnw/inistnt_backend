@@ -29,7 +29,6 @@ const skillSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
-skillSchema.index({ name: 1 });
 skillSchema.index({ isApproved: 1, isActive: 1 });
 
 module.exports = mongoose.model("Skill", skillSchema);
