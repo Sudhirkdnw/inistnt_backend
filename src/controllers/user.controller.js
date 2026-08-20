@@ -1,7 +1,5 @@
 const userModel = require("../models/user.model");
 const bcrypt = require("bcryptjs");
-const DatingProfile = require("../models/dating.model");
-const Swipe = require("../models/swipe.model");
 const notificationModel = require("../models/notification.model");
 const Confession = require("../models/confession.model");
 const Comment = require("../models/comment.model");
