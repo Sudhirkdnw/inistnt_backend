@@ -3,6 +3,7 @@ const router = express.Router();
 const { authMiddleware } = require("../middlewares/authmiddleware");
 const adminMiddleware = require("../middlewares/adminMiddleware");
 const requirePermission = require("../middlewares/permission.middleware");
+const ccAdmin = require("../controllers/adminCampusConnect.controller");
 
 const {
     getDashboard, getAllUsers, getUserDetails, toggleBan, changeRole, deleteUser, restoreUser,
@@ -86,9 +87,11 @@ router.get("/verifications", requirePermission("verificationRequests", "view"), 
 router.post("/verifications/bulk-handle", requirePermission("verificationRequests", "update"), bulkHandleVerifications);
 router.put("/verifications/:id", requirePermission("verificationRequests", "update"), handleVerification);
 
-// Dating Module
-router.get("/dating/profiles", requirePermission("dating", "view"), getAllDatingProfiles);
-router.put("/dating/profiles/:id", requirePermission("dating", "update"), handleDatingProfile);
+// Campus Connect User Moderation
+router.get("/campus-connect/users", requirePermission("dating", "view"), ccAdmin.getCCUsers);
+router.get("/campus-connect/users/:id", requirePermission("dating", "view"), ccAdmin.getCCUserDetail);
+router.post("/campus-connect/users/:id/action", requirePermission("dating", "update"), ccAdmin.handleCCUserAction);
+
 
 // Admin Management Module
 router.get("/admins", requirePermission("userManagement", "view"), getAdmins);
@@ -151,7 +154,6 @@ router.post("/premium/revoke", requirePermission("premium", "update"), revokePre
 router.post("/premium/cancel-subscription", requirePermission("premium", "update"), cancelSubscriptionAdmin);
 router.get("/premium/subscribers", requirePermission("premium", "view"), getPremiumSubscribers);
 router.get("/premium/analytics", requirePermission("premium", "view"), getPremiumAnalytics);
-const ccAdmin = require("../controllers/adminCampusConnect.controller");
 
 // Campus Connect Control Center
 router.get("/campus-connect/stats", requirePermission("analytics", "view"), ccAdmin.getStats);
@@ -184,5 +186,31 @@ router.get("/campus-connect/communities", requirePermission("userManagement", "v
 router.post("/campus-connect/communities", requirePermission("userManagement", "create"), ccAdmin.createCommunity);
 router.put("/campus-connect/communities/:id", requirePermission("userManagement", "update"), ccAdmin.updateCommunity);
 router.delete("/campus-connect/communities/:id", requirePermission("userManagement", "delete"), ccAdmin.deleteCommunity);
+
+const collegeHierarchyAdmin = require("../controllers/collegeHierarchy.controller");
+
+// Hierarchy Universities CRUD
+router.get("/hierarchy/universities", requirePermission("userManagement", "view"), collegeHierarchyAdmin.adminGetUniversities);
+router.post("/hierarchy/universities", requirePermission("userManagement", "create"), collegeHierarchyAdmin.adminCreateUniversity);
+router.put("/hierarchy/universities/:id", requirePermission("userManagement", "update"), collegeHierarchyAdmin.adminUpdateUniversity);
+router.delete("/hierarchy/universities/:id", requirePermission("userManagement", "delete"), collegeHierarchyAdmin.adminDeleteUniversity);
+
+// Hierarchy Campuses CRUD
+router.get("/hierarchy/campuses", requirePermission("userManagement", "view"), collegeHierarchyAdmin.adminGetCampuses);
+router.post("/hierarchy/campuses", requirePermission("userManagement", "create"), collegeHierarchyAdmin.adminCreateCampus);
+router.put("/hierarchy/campuses/:id", requirePermission("userManagement", "update"), collegeHierarchyAdmin.adminUpdateCampus);
+router.delete("/hierarchy/campuses/:id", requirePermission("userManagement", "delete"), collegeHierarchyAdmin.adminDeleteCampus);
+
+// Hierarchy Departments CRUD
+router.get("/hierarchy/departments", requirePermission("userManagement", "view"), collegeHierarchyAdmin.adminGetDepartments);
+router.post("/hierarchy/departments", requirePermission("userManagement", "create"), collegeHierarchyAdmin.adminCreateDepartment);
+router.put("/hierarchy/departments/:id", requirePermission("userManagement", "update"), collegeHierarchyAdmin.adminUpdateDepartment);
+router.delete("/hierarchy/departments/:id", requirePermission("userManagement", "delete"), collegeHierarchyAdmin.adminDeleteDepartment);
+
+// Hierarchy Branches CRUD
+router.get("/hierarchy/branches", requirePermission("userManagement", "view"), collegeHierarchyAdmin.adminGetBranches);
+router.post("/hierarchy/branches", requirePermission("userManagement", "create"), collegeHierarchyAdmin.adminCreateBranch);
+router.put("/hierarchy/branches/:id", requirePermission("userManagement", "update"), collegeHierarchyAdmin.adminUpdateBranch);
+router.delete("/hierarchy/branches/:id", requirePermission("userManagement", "delete"), collegeHierarchyAdmin.adminDeleteBranch);
 
 module.exports = router;

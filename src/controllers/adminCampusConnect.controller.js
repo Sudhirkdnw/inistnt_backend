@@ -511,3 +511,309 @@ exports.deleteCommunity = async (req, res) => {
         return res.status(500).json({ message: "Failed to delete community" });
     }
 };
+
+// GET /api/admin/campus-connect/users
+exports.getCCUsers = async (req, res) => {
+    try {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
+        const skip = (page - 1) * limit;
+        const search = req.query.search || '';
+        const college = req.query.college || '';
+        const branch = req.query.branch || '';
+        const semester = req.query.semester || '';
+        const verificationStatus = req.query.verificationStatus || '';
+
+        // Build search filters on User
+        let userQuery = {};
+        if (search) {
+            userQuery.$or = [
+                { username: { $regex: search, $options: "i" } },
+                { fullName: { $regex: search, $options: "i" } },
+                { collegeName: { $regex: search, $options: "i" } },
+                { branch: { $regex: search, $options: "i" } }
+            ];
+        }
+        if (college) userQuery.collegeName = college;
+        if (branch) userQuery.branch = branch;
+        if (semester) userQuery.semester = semester;
+        if (verificationStatus) userQuery.verificationStatus = verificationStatus;
+
+        // Fetch User IDs matching criteria
+        const matchingUsers = await userModel.find(userQuery).select("_id");
+        const userIds = matchingUsers.map(u => u._id);
+
+        // Find CC profiles
+        const query = { user: { $in: userIds } };
+        const total = await CampusConnectProfile.countDocuments(query);
+        
+        const rawProfiles = await CampusConnectProfile.find(query)
+            .populate("user", "username fullName email avatar collegeName branch semester verificationStatus lastActive createdAt skills interests goals")
+            .skip(skip)
+            .limit(limit)
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Map and include stats (connections count, joined communities)
+        const profiles = await Promise.all(rawProfiles.map(async (p) => {
+            if (!p.user) return null;
+
+            // Connections count (mutual connects)
+            const connCountAggregation = await CampusConnectAction.aggregate([
+                { $match: { actor: p.user._id, action: "connect" } },
+                {
+                    $lookup: {
+                        from: "campusconnectactions",
+                        let: { actor: "$actor", target: "$targetUser" },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: {
+                                        $and: [
+                                            { $eq: ["$actor", "$$target"] },
+                                            { $eq: ["$targetUser", "$$actor"] },
+                                            { $eq: ["$action", "connect"] }
+                                        ]
+                                    }
+                                }
+                            }
+                        ],
+                        as: "reciprocal"
+                    }
+                },
+                { $match: { reciprocal: { $size: 1 } } },
+                { $count: "count" }
+            ]);
+            const connectionsCount = connCountAggregation[0]?.count || 0;
+
+            // Communities count
+            const communitiesCount = await Community.countDocuments({ members: p.user._id });
+
+            return {
+                ...p,
+                connectionsCount,
+                communitiesCount
+            };
+        }));
+
+        res.status(200).json({
+            profiles: profiles.filter(Boolean),
+            pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
+// GET /api/admin/campus-connect/users/:id
+exports.getCCUserDetail = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = await userModel.findById(id).select("-password").lean();
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        const profile = await CampusConnectProfile.findOne({ user: id }).lean();
+        
+        // Joined communities list
+        const joinedCommunities = await Community.find({ members: id }).select("name description category").lean();
+
+        // Statistics computation
+        const mutualCountAgg = await CampusConnectAction.aggregate([
+            { $match: { actor: new mongoose.Types.ObjectId(id), action: "connect" } },
+            {
+                $lookup: {
+                    from: "campusconnectactions",
+                    let: { actor: "$actor", target: "$targetUser" },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ["$actor", "$$target"] },
+                                        { $eq: ["$targetUser", "$$actor"] },
+                                        { $eq: ["$action", "connect"] }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                    as: "reciprocal"
+                }
+            },
+            { $match: { reciprocal: { $size: 1 } } },
+            { $count: "count" }
+        ]);
+        const totalConnections = mutualCountAgg[0]?.count || 0;
+
+        const pendingCountAgg = await CampusConnectAction.aggregate([
+            { $match: { actor: new mongoose.Types.ObjectId(id), action: "connect" } },
+            {
+                $lookup: {
+                    from: "campusconnectactions",
+                    let: { actor: "$actor", target: "$targetUser" },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ["$actor", "$$target"] },
+                                        { $eq: ["$targetUser", "$$actor"] },
+                                        { $eq: ["$action", "connect"] }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                    as: "reciprocal"
+                }
+            },
+            { $match: { reciprocal: { $size: 0 } } },
+            { $count: "count" }
+        ]);
+        const pendingRequests = pendingCountAgg[0]?.count || 0;
+
+        const savedBy = await CampusConnectAction.countDocuments({ targetUser: id, action: "save" });
+        const profilesSaved = await CampusConnectAction.countDocuments({ actor: id, action: "save" });
+
+        const Message = require("../models/message.model");
+        const messagesSent = await Message.countDocuments({ sender: id });
+
+        // Reports history
+        const reports = await reportModel.find({ targetId: id }).populate("reporter", "username").lean();
+
+        res.status(200).json({
+            user,
+            profile,
+            joinedCommunities,
+            stats: {
+                totalConnections,
+                pendingRequests,
+                savedBy,
+                profilesSaved,
+                communitiesJoined: joinedCommunities.length,
+                messagesSent,
+                activityScore: profile?.activityScore || 0
+            },
+            reports
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
+// POST /api/admin/campus-connect/users/:id/action
+exports.handleCCUserAction = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { action, payload } = req.body;
+
+        const user = await userModel.findById(id);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        let profile = await CampusConnectProfile.findOne({ user: id });
+
+        switch (action) {
+            case "edit_profile":
+                if (payload.fullName) user.fullName = payload.fullName;
+                if (payload.collegeName) user.collegeName = payload.collegeName;
+                if (payload.branch) user.branch = payload.branch;
+                if (payload.semester) user.semester = payload.semester;
+                await user.save();
+                break;
+
+            case "reset_preferences":
+                if (profile) {
+                    profile.intents = ["friends", "networking"];
+                    profile.locationFilter = "my_college";
+                    await profile.save();
+                }
+                break;
+
+            case "suspend_cc":
+                if (profile) {
+                    profile.isActive = false;
+                    await profile.save();
+                }
+                break;
+
+            case "enable_cc":
+                if (profile) {
+                    profile.isActive = true;
+                    await profile.save();
+                }
+                break;
+
+            case "delete_photo":
+                if (payload.photoUrl && user.photos) {
+                    user.photos = user.photos.filter(p => p !== payload.photoUrl);
+                    if (user.avatar === payload.photoUrl) {
+                        user.avatar = user.photos[0] || "";
+                    }
+                    await user.save();
+                }
+                break;
+
+            case "delete_skill":
+                if (payload.skill && user.skills) {
+                    user.skills = user.skills.filter(s => s !== payload.skill);
+                    await user.save();
+                }
+                break;
+
+            case "delete_interest":
+                if (payload.interest && user.interests) {
+                    user.interests = user.interests.filter(i => i !== payload.interest);
+                    await user.save();
+                }
+                break;
+
+            case "delete_goal":
+                if (payload.goal && user.goals) {
+                    user.goals = user.goals.filter(g => g !== payload.goal);
+                    await user.save();
+                }
+                break;
+
+            case "delete_community":
+                if (payload.communityId) {
+                    await Community.findByIdAndUpdate(payload.communityId, { $pull: { members: id, moderators: id } });
+                }
+                break;
+
+            case "approve_verification":
+                user.verificationStatus = "APPROVED";
+                user.isVerified = true;
+                await user.save();
+                break;
+
+            case "reject_verification":
+                user.verificationStatus = "REJECTED";
+                user.isVerified = false;
+                await user.save();
+                break;
+
+            case "ban_user":
+                user.isBanned = true;
+                await user.save();
+                break;
+
+            case "warn_user":
+                await notificationModel.create({
+                    user: id,
+                    type: "campus_connect_hi", // matches defined notification enums
+                    message: `⚠️ Moderation Warning: ${payload.warningMessage || "Your profile violating guidelines."}`,
+                    meta: { warning: true }
+                });
+                break;
+
+            default:
+                return res.status(400).json({ message: "Unsupported admin action" });
+        }
+
+        await logAdminAction(req.user._id, `action_${action}`, id, { payload });
+
+        res.status(200).json({ message: `Action '${action}' executed successfully` });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};

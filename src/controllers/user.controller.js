@@ -16,7 +16,7 @@ const { sendVerificationEmail } = require("../services/emailService");
 async function getUserProfile(req, res) {
     try {
         const user = await userModel.findById(req.params.id)
-            .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt isPremium followRequests coverPhoto university branch semester gradYear skills interests goals github linkedin portfolio resume achievements certifications communitiesJoined photos gender dob pronouns website languages showOnlineStatus hideFromSuggestions")
+            .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt isPremium followRequests coverPhoto university department branch semester gradYear skills interests goals github linkedin portfolio resume achievements certifications communitiesJoined photos gender dob pronouns website languages showOnlineStatus hideFromSuggestions isEmailVerified")
             .populate("followers", "username fullName avatar")
             .populate("following", "username fullName avatar")
             .lean();
@@ -152,7 +152,9 @@ async function updateProfile(req, res) {
 
         // Student identity fields
         if (req.body.coverPhoto !== undefined) user.coverPhoto = req.body.coverPhoto;
+        if (req.body.collegeName !== undefined) user.collegeName = req.body.collegeName;
         if (req.body.university !== undefined) user.university = req.body.university;
+        if (req.body.department !== undefined) user.department = req.body.department;
         if (req.body.branch !== undefined) user.branch = req.body.branch;
         if (req.body.semester !== undefined) user.semester = req.body.semester ? Number(req.body.semester) : null;
         if (req.body.gradYear !== undefined) user.gradYear = req.body.gradYear ? Number(req.body.gradYear) : null;
@@ -190,7 +192,9 @@ async function updateProfile(req, res) {
                 isEmailVerified: user.isEmailVerified,
                 notificationSoundEnabled: user.notificationSoundEnabled,
                 coverPhoto: user.coverPhoto,
+                collegeName: user.collegeName,
                 university: user.university,
+                department: user.department,
                 branch: user.branch,
                 semester: user.semester,
                 gradYear: user.gradYear,

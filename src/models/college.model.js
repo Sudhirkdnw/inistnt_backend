@@ -1,16 +1,16 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const collegeSchema = new mongoose.Schema({
     name: {
         type: String,
         required: true,
-        trim: true,
-        unique: true
-    },
-    aliases: [{
-        type: String,
         trim: true
-    }],
+    },
+    university: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "University",
+        required: true
+    },
     city: {
         type: String,
         trim: true,
@@ -24,14 +24,9 @@ const collegeSchema = new mongoose.Schema({
     isActive: {
         type: Boolean,
         default: true
-    },
-    addedByAdmin: {
-        type: Boolean,
-        default: true
     }
 }, { timestamps: true });
 
-// Optimize search by name and aliases
-collegeSchema.index({ name: 'text', aliases: 'text' });
+collegeSchema.index({ university: 1, name: 1 }, { unique: true });
 
-module.exports = mongoose.model('college', collegeSchema);
+module.exports = mongoose.model("College", collegeSchema);

@@ -35,7 +35,7 @@ async function sendOtpController(req, res) {
         try {
             otp = Math.floor(100000 + Math.random() * 900000).toString();
         } catch (tokenErr) {
-            console.error("❌ [sendOtpController] Failed to generate OTP:", tokenErr.message);
+            InfrastructureLogger.auth("ERROR", `Failed to generate OTP: ${tokenErr.message}`);
             throw new Error(`Token generation failed: ${tokenErr.message}`);
         }
 
@@ -46,13 +46,13 @@ async function sendOtpController(req, res) {
         // Send email in background asynchronously (non-blocking)
         sendVerificationEmail(email.toLowerCase(), otp, email.split('@')[0])
             .catch((err) => {
-                console.error(`❌ [sendOtpController] Failed to queue verification email for ${email}:`, err.message);
+                InfrastructureLogger.auth("ERROR", `Failed to queue verification email for ${email}: ${err.message}`);
             });
 
         InfrastructureLogger.auth("INFO", `OTP verification code requested for college email: ${email}`, { email });
         res.status(200).json({ message: "OTP sent to email" });
     } catch (error) {
-        console.error("❌ [sendOtpController] Fatal execution error:", error.message);
+        InfrastructureLogger.auth("ERROR", `Fatal execution error during sendOtp: ${error.message}`);
         res.status(500).json({ message: `Email verification request failed: ${error.message}` });
     }
 }
@@ -65,7 +65,7 @@ async function registerController(req, res) {
             return res.status(403).json({ message: "New registrations are currently disabled by administrator" });
         }
 
-        const { username, password, email, fullName, collegeName, collegeEmail, verificationMethod } = req.body;
+        const { username, password, email, fullName, collegeName, collegeEmail, verificationMethod, university, department, branch, semester } = req.body;
 
         if (!username || !password) {
             return res.status(400).json({ message: "Username and password are required" });
@@ -177,6 +177,10 @@ async function registerController(req, res) {
             email: email ? email.toLowerCase() : undefined,
             fullName: fullName || "",
             collegeName,
+            university: university || "",
+            department: department || "",
+            branch: branch || "",
+            semester: semester ? Number(semester) : null,
             collegeEmail: collegeEmail ? collegeEmail.toLowerCase() : "",
             idCardImage,
             idCardMetadata,

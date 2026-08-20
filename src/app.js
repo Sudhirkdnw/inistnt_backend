@@ -19,6 +19,7 @@ const collegeRoutes = require('./routes/college.routes');
 const subscriptionRoutes = require('./routes/subscription.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const postRoutes = require('./routes/post.routes');
+const collegeHierarchyRoutes = require('./routes/collegeHierarchy.routes');
 const cors = require('cors');
 
 const app = express();
@@ -127,6 +128,7 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/monitoring", monitoringRoutes);
 app.use("/api/colleges", collegeRoutes);
+app.use("/api/hierarchy", collegeHierarchyRoutes);
 app.use("/api/dashboard", rateLimiter({ windowMs: 60 * 1000, max: 60, prefix: 'dashboard' }), dashboardRoutes);
 
 app.get("/api/health", (req, res) => {
