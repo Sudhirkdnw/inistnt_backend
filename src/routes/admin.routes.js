@@ -47,6 +47,8 @@ const {
     revokePremiumManual,
     cancelSubscriptionAdmin,
     getSubscribers: getPremiumSubscribers,
+    updateSubscriberAdmin,
+    getSubscriberAudit,
     getPremiumAnalytics
 } = require("../controllers/adminPremium.controller");
 
@@ -153,6 +155,8 @@ router.post("/premium/grant", requirePermission("premium", "update"), grantPremi
 router.post("/premium/revoke", requirePermission("premium", "update"), revokePremiumManual);
 router.post("/premium/cancel-subscription", requirePermission("premium", "update"), cancelSubscriptionAdmin);
 router.get("/premium/subscribers", requirePermission("premium", "view"), getPremiumSubscribers);
+router.put("/premium/subscribers/:id", requirePermission("premium", "update"), updateSubscriberAdmin);
+router.get("/premium/subscribers/:id/audit", requirePermission("premium", "view"), getSubscriberAudit);
 router.get("/premium/analytics", requirePermission("premium", "view"), getPremiumAnalytics);
 
 // Campus Connect Control Center

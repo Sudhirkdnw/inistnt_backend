@@ -187,10 +187,10 @@ async function deletePlan(req, res) {
     }
 }
 
-// POST /api/admin/premium/grant — Manually grant premium access (Promotional/Free access)
+// POST /api/admin/premium/grant — Manually grant premium access with custom plan and duration
 async function grantPremiumManual(req, res) {
     try {
-        const { userId, days, expireAt } = req.body;
+        const { userId, days, expireAt, planId, notes } = req.body;
 
         if (!userId) {
             return res.status(400).json({ message: "User ID is required" });
@@ -205,38 +205,46 @@ async function grantPremiumManual(req, res) {
         let premiumExpireAt = new Date();
         if (expireAt) {
             premiumExpireAt = new Date(expireAt);
-        } else if (days !== undefined) {
+        } else if (days !== undefined && !isNaN(Number(days))) {
             premiumExpireAt.setDate(premiumExpireAt.getDate() + parseInt(days));
         } else {
-            return res.status(400).json({ message: "Must provide either expiration date (expireAt) or number of days" });
+            premiumExpireAt.setDate(premiumExpireAt.getDate() + 30); // Default 30 days
         }
 
-        // 2. Fetch or create a default manual plan placeholder
-        let promoPlan = await subscriptionPlanModel.findOne({ name: "Promotional Plan" });
-        if (!promoPlan) {
-            promoPlan = await subscriptionPlanModel.create({
-                name: "Promotional Plan",
-                description: "Manually granted promotional plan by Administrator",
-                price: 0,
-                billingPeriod: "custom",
-                isActive: false // Hidden from users list
-            });
+        // 2. Fetch selected plan or default promo plan
+        let selectedPlan = null;
+        if (planId) {
+            selectedPlan = await subscriptionPlanModel.findById(planId);
+        }
+        if (!selectedPlan) {
+            selectedPlan = await subscriptionPlanModel.findOne({ name: "Promotional Plan" });
+            if (!selectedPlan) {
+                selectedPlan = await subscriptionPlanModel.create({
+                    name: "Promotional Plan",
+                    description: "Manually granted promotional plan by Administrator",
+                    price: 0,
+                    billingPeriod: "custom",
+                    isActive: false
+                });
+            }
         }
 
-        // 3. Update active subscription
+        // 3. Expire previous active subscriptions
         await subscriptionModel.updateMany(
             { user: userId, status: "active" },
             { status: "expired" }
         );
 
+        const txId = `ADMIN_GRANT_${Date.now()}_${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
         const subscription = await subscriptionModel.create({
             user: userId,
-            plan: promoPlan._id,
+            plan: selectedPlan._id,
             status: "active",
             startDate: new Date(),
             endDate: premiumExpireAt,
             paymentGateway: "admin",
-            gatewaySubscriptionId: `admin_grant_${Date.now()}`
+            gatewaySubscriptionId: txId
         });
 
         // 4. Update user
@@ -245,21 +253,28 @@ async function grantPremiumManual(req, res) {
         await user.save();
 
         // 5. Create audit transaction entry
-        await paymentHistoryModel.create({
+        const paymentEntry = await paymentHistoryModel.create({
             user: userId,
             subscription: subscription._id,
-            plan: promoPlan._id,
-            amount: 0,
+            plan: selectedPlan._id,
+            amount: selectedPlan.price || 0,
+            currency: "INR",
             status: "completed",
             paymentGateway: "admin",
-            gatewayTransactionId: `admin_tx_${Date.now()}`,
-            gatewayResponse: { grantedBy: req.user._id, reason: "Manual Administrator Promotional Grant" }
+            gatewayTransactionId: txId,
+            gatewayResponse: { 
+                grantedBy: req.user?._id || "admin",
+                grantedByUsername: req.user?.username || "Admin",
+                reason: notes || "Manual Administrator Promotional Grant",
+                grantedAt: new Date().toISOString()
+            }
         });
 
         res.status(200).json({ 
-            message: `Premium granted to user @${user.username} until ${premiumExpireAt.toISOString()}`,
+            message: `Premium granted to user @${user.username} until ${premiumExpireAt.toLocaleDateString()}`,
             user,
-            subscription
+            subscription,
+            payment: paymentEntry
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -300,14 +315,214 @@ async function revokePremiumManual(req, res) {
     }
 }
 
-// GET /api/admin/premium/subscribers — Get list of active premium users
+// GET /api/admin/premium/subscribers — Enterprise-grade subscriber list & audit
 async function getSubscribers(req, res) {
     try {
-        const subscriptions = await subscriptionModel.find({ status: "active" })
-            .populate("user", "username fullName email avatar")
-            .populate("plan", "name price billingPeriod")
-            .sort({ endDate: -1 });
-        res.status(200).json({ subscriptions });
+        const { status, gateway, planId, search } = req.query;
+
+        let query = {};
+        if (status && status !== "all") {
+            query.status = status;
+        }
+        if (gateway && gateway !== "all") {
+            query.paymentGateway = gateway;
+        }
+        if (planId && planId !== "all") {
+            query.plan = planId;
+        }
+
+        // Find subscriptions
+        let subscriptions = await subscriptionModel.find(query)
+            .populate("user", "username fullName email avatar collegeName department createdAt isPremium premiumExpireAt")
+            .populate("plan", "name price billingPeriod discountPercentage freeTrialDays")
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // If search term provided, filter populated users or transaction IDs
+        if (search && search.trim()) {
+            const q = search.trim().toLowerCase();
+            subscriptions = subscriptions.filter(sub => {
+                const u = sub.user || {};
+                return (
+                    (u.username && u.username.toLowerCase().includes(q)) ||
+                    (u.fullName && u.fullName.toLowerCase().includes(q)) ||
+                    (u.email && u.email.toLowerCase().includes(q)) ||
+                    (sub.gatewaySubscriptionId && sub.gatewaySubscriptionId.toLowerCase().includes(q)) ||
+                    (sub._id && sub._id.toString().toLowerCase().includes(q))
+                );
+            });
+        }
+
+        // Fetch corresponding payment histories for each subscription
+        const subIds = subscriptions.map(s => s._id);
+        const payments = await paymentHistoryModel.find({ subscription: { $in: subIds } })
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const paymentMap = {};
+        payments.forEach(p => {
+            if (p.subscription && !paymentMap[p.subscription.toString()]) {
+                paymentMap[p.subscription.toString()] = p;
+            }
+        });
+
+        // Enrich subscriptions with payment audit data and time calculations
+        const enriched = subscriptions.map(sub => {
+            const latestPayment = paymentMap[sub._id.toString()] || null;
+            const now = new Date();
+            const end = new Date(sub.endDate);
+            const daysRemaining = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+            const isCurrentlyValid = sub.status === "active" && end > now;
+
+            return {
+                ...sub,
+                isCurrentlyValid,
+                daysRemaining: isCurrentlyValid ? Math.max(0, daysRemaining) : 0,
+                daysExpiredAgo: !isCurrentlyValid ? Math.max(0, -daysRemaining) : 0,
+                latestPayment: latestPayment ? {
+                    _id: latestPayment._id,
+                    amount: latestPayment.amount,
+                    currency: latestPayment.currency || "INR",
+                    status: latestPayment.status,
+                    paymentGateway: latestPayment.paymentGateway,
+                    gatewayTransactionId: latestPayment.gatewayTransactionId,
+                    gatewayResponse: latestPayment.gatewayResponse,
+                    paidAt: latestPayment.createdAt
+                } : null
+            };
+        });
+
+        // Counts for tabs
+        const [totalCount, activeCount, expiredCount, cancelledCount] = await Promise.all([
+            subscriptionModel.countDocuments(),
+            subscriptionModel.countDocuments({ status: "active" }),
+            subscriptionModel.countDocuments({ status: "expired" }),
+            subscriptionModel.countDocuments({ status: "cancelled" })
+        ]);
+
+        res.status(200).json({
+            subscriptions: enriched,
+            stats: {
+                totalCount,
+                activeCount,
+                expiredCount,
+                cancelledCount
+            }
+        });
+    } catch (error) {
+        console.error("getSubscribers error:", error);
+        res.status(500).json({ message: error.message });
+    }
+}
+
+// PUT /api/admin/premium/subscribers/:id — Enterprise Subscriber Override
+async function updateSubscriberAdmin(req, res) {
+    try {
+        const { id } = req.params;
+        const { planId, endDate, status, cancelAtPeriodEnd, extendDays } = req.body;
+
+        const subscription = await subscriptionModel.findById(id);
+        if (!subscription) {
+            return res.status(404).json({ message: "Subscription not found" });
+        }
+
+        const user = await userModel.findById(subscription.user);
+
+        // 1. Update Plan if requested
+        if (planId) {
+            const planExists = await subscriptionPlanModel.findById(planId);
+            if (planExists) {
+                subscription.plan = planId;
+            }
+        }
+
+        // 2. Update Expiry Date if provided or extended
+        let newEndDate = subscription.endDate;
+        if (endDate) {
+            newEndDate = new Date(endDate);
+            subscription.endDate = newEndDate;
+        } else if (extendDays && !isNaN(Number(extendDays))) {
+            newEndDate = new Date(subscription.endDate);
+            newEndDate.setDate(newEndDate.getDate() + parseInt(extendDays));
+            subscription.endDate = newEndDate;
+        }
+
+        // 3. Update Status & Auto-Renew
+        if (status) {
+            subscription.status = status;
+        }
+        if (typeof cancelAtPeriodEnd === "boolean") {
+            subscription.cancelAtPeriodEnd = cancelAtPeriodEnd;
+        }
+
+        await subscription.save();
+
+        // 4. Sync User Premium Status
+        if (user) {
+            if (subscription.status === "active" && new Date(subscription.endDate) > new Date()) {
+                user.isPremium = true;
+                user.premiumExpireAt = subscription.endDate;
+            } else if (subscription.status === "expired") {
+                user.isPremium = false;
+                user.premiumExpireAt = null;
+            }
+            await user.save();
+        }
+
+        // 5. Add audit log to paymentHistory
+        await paymentHistoryModel.create({
+            user: subscription.user,
+            subscription: subscription._id,
+            plan: subscription.plan,
+            amount: 0,
+            currency: "INR",
+            status: "completed",
+            paymentGateway: "admin",
+            gatewayTransactionId: `ADMIN_OVERRIDE_${Date.now()}`,
+            gatewayResponse: {
+                updatedBy: req.user?._id || "admin",
+                updatedAt: new Date().toISOString(),
+                changes: { planId, endDate: subscription.endDate, status: subscription.status }
+            }
+        });
+
+        const updated = await subscriptionModel.findById(id)
+            .populate("user", "username fullName email avatar isPremium premiumExpireAt")
+            .populate("plan", "name price billingPeriod");
+
+        res.status(200).json({
+            message: "Subscriber details updated and synchronized successfully",
+            subscription: updated
+        });
+    } catch (error) {
+        console.error("updateSubscriberAdmin error:", error);
+        res.status(500).json({ message: error.message });
+    }
+}
+
+// GET /api/admin/premium/subscribers/:id/audit — Detailed audit logs for subscriber
+async function getSubscriberAudit(req, res) {
+    try {
+        const { id } = req.params;
+        const subscription = await subscriptionModel.findById(id)
+            .populate("user", "username fullName email avatar collegeName createdAt")
+            .populate("plan", "name price billingPeriod");
+
+        if (!subscription) {
+            return res.status(404).json({ message: "Subscription not found" });
+        }
+
+        const payments = await paymentHistoryModel.find({
+            $or: [
+                { subscription: subscription._id },
+                { user: subscription.user?._id }
+            ]
+        }).sort({ createdAt: -1 });
+
+        res.status(200).json({
+            subscription,
+            payments
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -432,5 +647,7 @@ module.exports = {
     revokePremiumManual,
     cancelSubscriptionAdmin,
     getSubscribers,
+    updateSubscriberAdmin,
+    getSubscriberAudit,
     getPremiumAnalytics
 };
