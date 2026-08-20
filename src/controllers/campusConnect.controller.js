@@ -570,30 +570,37 @@ async function getConnections(req, res) {
         const myConnects = await CampusConnectAction.find({ actor: userId, action: "connect" }).select("targetUser").lean();
         const myConnectIds = myConnects.map(a => a.targetUser);
 
-        // Find everyone who connected back
+        // Find mutual connects
         const mutualActions = await CampusConnectAction.find({
             actor: { $in: myConnectIds },
             targetUser: userId,
             action: "connect"
         }).select("actor").lean();
 
-        const mutualIds = mutualActions.map(a => a.actor);
+        const mutualIdSet = new Set(mutualActions.map(a => String(a.actor)));
 
         // Also get saved profiles
         const savedActions = await CampusConnectAction.find({ actor: userId, action: "save" }).select("targetUser").lean();
         const savedIds = savedActions.map(a => a.targetUser);
 
-        const [mutualProfiles, savedProfiles] = await Promise.all([
-            CampusConnectProfile.find({ user: { $in: mutualIds } })
-                .populate("user", "username fullName avatar collegeName verificationStatus")
+        const [connectProfiles, savedProfiles] = await Promise.all([
+            CampusConnectProfile.find({ user: { $in: myConnectIds } })
+                .populate("user", "username fullName avatar collegeName verificationStatus branch semester")
                 .lean(),
             CampusConnectProfile.find({ user: { $in: savedIds } })
-                .populate("user", "username fullName avatar collegeName verificationStatus")
+                .populate("user", "username fullName avatar collegeName verificationStatus branch semester")
                 .lean()
         ]);
 
+        const formattedConnections = connectProfiles
+            .filter(p => p.user)
+            .map(p => ({
+                ...p,
+                isMutual: mutualIdSet.has(String(p.user._id || p.user))
+            }));
+
         return res.status(200).json({
-            connections: mutualProfiles.filter(p => p.user),
+            connections: formattedConnections,
             saved: savedProfiles.filter(p => p.user)
         });
     } catch (err) {
