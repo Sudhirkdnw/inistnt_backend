@@ -29,7 +29,7 @@ const syncSettings = async () => {
             { key: 'session_timeout', value: 24, category: 'Security' },
             { key: 'ai_service_enabled', value: true, category: 'AI', description: 'Enable or disable AI features globally' },
             { key: 'ai_api_key', value: '', category: 'AI', description: 'API Key for Groq AI SDK (overrides environment variable)' },
-            { key: 'ai_model', value: 'meta-llama/llama-4-scout-17b-16e-instruct', category: 'AI', description: 'Groq Model name to use' },
+            { key: 'ai_model', value: 'openai/gpt-oss-120b', category: 'AI', description: 'Groq Model name to use' },
             { key: 'ai_moderation', value: true, category: 'AI' },
             { key: 'ai_toxicity_threshold', value: 0.7, category: 'AI' },
             { key: 'auto_hide_toxic', value: true, category: 'AI' },
@@ -91,6 +91,15 @@ const syncSettings = async () => {
         );
         if (platformNameRes.modifiedCount > 0) {
             console.log(`[Migration] Updated ${platformNameRes.modifiedCount} platform/company name settings to 'Hykee'`);
+        }
+
+        // Migrate deprecated / invalid AI models in DB settings
+        const aiModelRes = await Setting.updateMany(
+            { key: "ai_model", value: { $in: ["meta-llama/llama-4-scout-17b-16e-instruct", "llama-3.3-70b-versatile", "llama-3.1-8b-instant", ""] } },
+            { $set: { value: "openai/gpt-oss-120b" } }
+        );
+        if (aiModelRes.modifiedCount > 0) {
+            console.log(`[Migration] Updated ${aiModelRes.modifiedCount} ai_model settings to 'openai/gpt-oss-120b'`);
         }
  
         const footerTextRes = await Setting.updateMany(
