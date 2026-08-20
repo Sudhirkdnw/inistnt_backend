@@ -319,26 +319,45 @@ async function revokePremiumManual(req, res) {
 async function getSubscribers(req, res) {
     try {
         const { status, gateway, planId, search } = req.query;
+        const now = new Date();
 
+        // 1. Auto-sync past due active subscriptions in DB
+        await subscriptionModel.updateMany(
+            { status: "active", endDate: { $lte: now } },
+            { $set: { status: "expired" } }
+        );
+
+        // 2. Build Query Filters
         let query = {};
-        if (status && status !== "all") {
-            query.status = status;
+
+        if (status === "active") {
+            query.status = "active";
+            query.endDate = { $gt: now };
+        } else if (status === "expired") {
+            query.$or = [
+                { status: "expired" },
+                { endDate: { $lte: now } }
+            ];
+        } else if (status === "cancelled") {
+            query.status = "cancelled";
         }
+
         if (gateway && gateway !== "all") {
             query.paymentGateway = gateway;
         }
+
         if (planId && planId !== "all") {
             query.plan = planId;
         }
 
-        // Find subscriptions
+        // 3. Find subscriptions with populated relations
         let subscriptions = await subscriptionModel.find(query)
             .populate("user", "username fullName email avatar collegeName department createdAt isPremium premiumExpireAt")
             .populate("plan", "name price billingPeriod discountPercentage freeTrialDays")
             .sort({ createdAt: -1 })
             .lean();
 
-        // If search term provided, filter populated users or transaction IDs
+        // 4. If search term provided, filter populated users or transaction IDs
         if (search && search.trim()) {
             const q = search.trim().toLowerCase();
             subscriptions = subscriptions.filter(sub => {
@@ -353,7 +372,7 @@ async function getSubscribers(req, res) {
             });
         }
 
-        // Fetch corresponding payment histories for each subscription
+        // 5. Fetch corresponding payment histories for each subscription
         const subIds = subscriptions.map(s => s._id);
         const payments = await paymentHistoryModel.find({ subscription: { $in: subIds } })
             .sort({ createdAt: -1 })
@@ -366,16 +385,17 @@ async function getSubscribers(req, res) {
             }
         });
 
-        // Enrich subscriptions with payment audit data and time calculations
+        // 6. Enrich subscriptions with payment audit data and accurate time calculations
         const enriched = subscriptions.map(sub => {
             const latestPayment = paymentMap[sub._id.toString()] || null;
-            const now = new Date();
             const end = new Date(sub.endDate);
             const daysRemaining = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
             const isCurrentlyValid = sub.status === "active" && end > now;
+            const effectiveStatus = isCurrentlyValid ? "active" : (sub.status === "cancelled" ? "cancelled" : "expired");
 
             return {
                 ...sub,
+                status: effectiveStatus,
                 isCurrentlyValid,
                 daysRemaining: isCurrentlyValid ? Math.max(0, daysRemaining) : 0,
                 daysExpiredAgo: !isCurrentlyValid ? Math.max(0, -daysRemaining) : 0,
@@ -392,11 +412,11 @@ async function getSubscribers(req, res) {
             };
         });
 
-        // Counts for tabs
+        // 7. Accurate Counts for filter pills
         const [totalCount, activeCount, expiredCount, cancelledCount] = await Promise.all([
             subscriptionModel.countDocuments(),
-            subscriptionModel.countDocuments({ status: "active" }),
-            subscriptionModel.countDocuments({ status: "expired" }),
+            subscriptionModel.countDocuments({ status: "active", endDate: { $gt: now } }),
+            subscriptionModel.countDocuments({ $or: [{ status: "expired" }, { endDate: { $lte: now } }] }),
             subscriptionModel.countDocuments({ status: "cancelled" })
         ]);
 
