@@ -223,14 +223,33 @@ async function getDiscovery(req, res) {
 
 // ─── Free Limit Validation Helper ─────────────────────────────────────────────
 // Free tier allows interacting (Connect, Say Hi, Save) with up to N distinct users configured by Admin.
-// Interacting beyond the limit requires a Premium subscription.
+// If Paywall is OFF (isPremiumRequired: false), all interactions are 100% free & unlimited for everyone.
 async function checkCampusConnectLimit(actorId, targetUserId, currentUser) {
+    // 1. Check Global Paywall setting from Admin Panel
+    let FREE_LIMIT = 3;
+    try {
+        const { getPremiumSettingsCached } = require("../utils/premiumSettingsCache");
+        const pSettings = await getPremiumSettingsCached();
+        if (pSettings) {
+            if (pSettings.isPremiumRequired === false) {
+                // Paywall is OFF in Admin Panel — all connects, say hi, and saves are 100% free & unlimited!
+                return { allowed: true };
+            }
+            if (typeof pSettings.freeCampusConnectLimit === "number") {
+                FREE_LIMIT = Math.max(0, pSettings.freeCampusConnectLimit);
+            }
+        }
+    } catch (e) {
+        FREE_LIMIT = 3;
+    }
+
+    // 2. Admin role or active premium users have unlimited access
     const isPremium = currentUser.isPremium && currentUser.premiumExpireAt && new Date(currentUser.premiumExpireAt) > new Date();
     if (currentUser.role === "admin" || isPremium) {
         return { allowed: true };
     }
 
-    // If the user has already interacted with THIS specific target user, allow action
+    // 3. If the user has already interacted with THIS specific target user, allow action
     const existingAction = await CampusConnectAction.findOne({
         actor: actorId,
         targetUser: targetUserId,
@@ -241,19 +260,7 @@ async function checkCampusConnectLimit(actorId, targetUserId, currentUser) {
         return { allowed: true };
     }
 
-    // Fetch dynamic limit configured in Admin Panel (default: 3)
-    let FREE_LIMIT = 3;
-    try {
-        const { getPremiumSettingsCached } = require("../utils/premiumSettingsCache");
-        const pSettings = await getPremiumSettingsCached();
-        if (pSettings && typeof pSettings.freeCampusConnectLimit === "number") {
-            FREE_LIMIT = Math.max(0, pSettings.freeCampusConnectLimit);
-        }
-    } catch (e) {
-        FREE_LIMIT = 3;
-    }
-
-    // Count distinct target users the actor has interacted with using connect, hi, or save
+    // 4. Count distinct target users the actor has interacted with using connect, hi, or save
     const distinctUsers = await CampusConnectAction.distinct("targetUser", {
         actor: actorId,
         action: { $in: ["connect", "hi", "save"] }

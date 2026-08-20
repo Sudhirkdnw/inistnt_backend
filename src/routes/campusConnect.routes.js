@@ -28,8 +28,6 @@ const {
 
 // All routes require authentication
 router.use(authMiddleware);
-// Premium paywall check (same gate as before)
-router.use(checkPremiumAccess);
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 router.post("/profile", setupProfile);
