@@ -5,6 +5,11 @@ const premiumSettingsSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    freeCampusConnectLimit: {
+        type: Number,
+        default: 3,
+        min: 0
+    },
     showMockGateway: {
         type: Boolean,
         default: true

@@ -13,6 +13,7 @@ const {
     sendConnect,
     sendHi,
     saveProfile,
+    unsaveProfile,
     passProfile,
     getConnections,
     disconnect,
@@ -45,6 +46,7 @@ router.get("/discovery", cacheMiddleware(30), getDiscovery);
 router.post("/connect/:targetUserId", sendConnect);
 router.post("/hi/:targetUserId", sendHi);
 router.post("/save/:targetUserId", saveProfile);
+router.delete("/save/:targetUserId", unsaveProfile);
 router.post("/pass/:targetUserId", passProfile);
 router.delete("/disconnect/:targetUserId", disconnect);
 

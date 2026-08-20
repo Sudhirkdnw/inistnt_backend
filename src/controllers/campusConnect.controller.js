@@ -221,6 +221,58 @@ async function getDiscovery(req, res) {
     }
 }
 
+// ─── Free Limit Validation Helper ─────────────────────────────────────────────
+// Free tier allows interacting (Connect, Say Hi, Save) with up to N distinct users configured by Admin.
+// Interacting beyond the limit requires a Premium subscription.
+async function checkCampusConnectLimit(actorId, targetUserId, currentUser) {
+    const isPremium = currentUser.isPremium && currentUser.premiumExpireAt && new Date(currentUser.premiumExpireAt) > new Date();
+    if (currentUser.role === "admin" || isPremium) {
+        return { allowed: true };
+    }
+
+    // If the user has already interacted with THIS specific target user, allow action
+    const existingAction = await CampusConnectAction.findOne({
+        actor: actorId,
+        targetUser: targetUserId,
+        action: { $in: ["connect", "hi", "save"] }
+    });
+
+    if (existingAction) {
+        return { allowed: true };
+    }
+
+    // Fetch dynamic limit configured in Admin Panel (default: 3)
+    let FREE_LIMIT = 3;
+    try {
+        const { getPremiumSettingsCached } = require("../utils/premiumSettingsCache");
+        const pSettings = await getPremiumSettingsCached();
+        if (pSettings && typeof pSettings.freeCampusConnectLimit === "number") {
+            FREE_LIMIT = Math.max(0, pSettings.freeCampusConnectLimit);
+        }
+    } catch (e) {
+        FREE_LIMIT = 3;
+    }
+
+    // Count distinct target users the actor has interacted with using connect, hi, or save
+    const distinctUsers = await CampusConnectAction.distinct("targetUser", {
+        actor: actorId,
+        action: { $in: ["connect", "hi", "save"] }
+    });
+
+    if (distinctUsers.length >= FREE_LIMIT) {
+        return {
+            allowed: false,
+            message: `Free limit reached! You can connect, say hi, or save up to ${FREE_LIMIT} profiles on the free plan. Upgrade to Premium for unlimited connections.`,
+            requiresPremium: true,
+            requiresPremiumUpgrade: true,
+            limit: FREE_LIMIT,
+            usedCount: distinctUsers.length
+        };
+    }
+
+    return { allowed: true };
+}
+
 // ─── Send Connect Request ─────────────────────────────────────────────────────
 async function sendConnect(req, res) {
     try {
@@ -232,6 +284,12 @@ async function sendConnect(req, res) {
 
         if (!myProfile || !theirProfile) {
             return res.status(404).json({ message: "Profile not found" });
+        }
+
+        // Enforce 3-user free limit for Connect / Say Hi / Save
+        const limitCheck = await checkCampusConnectLimit(userId, targetUserId, req.user);
+        if (!limitCheck.allowed) {
+            return res.status(403).json(limitCheck);
         }
 
         // Upsert action
@@ -345,6 +403,12 @@ async function sendHi(req, res) {
         const userId = req.user._id;
         const { targetUserId } = req.params;
 
+        // Enforce 3-user free limit for Connect / Say Hi / Save
+        const limitCheck = await checkCampusConnectLimit(userId, targetUserId, req.user);
+        if (!limitCheck.allowed) {
+            return res.status(403).json(limitCheck);
+        }
+
         await CampusConnectAction.findOneAndUpdate(
             { actor: userId, targetUser: targetUserId },
             { action: "hi" },
@@ -382,6 +446,12 @@ async function saveProfile(req, res) {
     try {
         const userId = req.user._id;
         const { targetUserId } = req.params;
+
+        // Enforce 3-user free limit for Connect / Say Hi / Save
+        const limitCheck = await checkCampusConnectLimit(userId, targetUserId, req.user);
+        if (!limitCheck.allowed) {
+            return res.status(403).json(limitCheck);
+        }
 
         await CampusConnectAction.findOneAndUpdate(
             { actor: userId, targetUser: targetUserId },
@@ -442,6 +512,25 @@ async function saveProfile(req, res) {
         return res.status(200).json({ message: "Profile saved ⭐" });
     } catch (err) {
         console.error("saveProfile error:", err);
+        return res.status(500).json({ message: "Server error" });
+    }
+}
+
+// ─── Unsave a Profile ─────────────────────────────────────────────────────────
+async function unsaveProfile(req, res) {
+    try {
+        const userId = req.user._id;
+        const { targetUserId } = req.params;
+
+        await CampusConnectAction.deleteMany({
+            actor: userId,
+            targetUser: targetUserId,
+            action: "save"
+        });
+
+        return res.status(200).json({ message: "Profile removed from saved" });
+    } catch (err) {
+        console.error("unsaveProfile error:", err);
         return res.status(500).json({ message: "Server error" });
     }
 }
@@ -750,6 +839,7 @@ module.exports = {
     sendConnect,
     sendHi,
     saveProfile,
+    unsaveProfile,
     passProfile,
     getConnections,
     disconnect,

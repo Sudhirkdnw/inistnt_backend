@@ -11,6 +11,7 @@ async function getSettings(req, res) {
         if (!settings) {
             settings = await premiumSettingsModel.create({
                 isPremiumRequired: true,
+                freeCampusConnectLimit: 3,
                 activeGateway: "mock",
                 showMockGateway: true,
                 enableStripeGateway: false,
@@ -44,6 +45,7 @@ async function updateSettings(req, res) {
     try {
         const { 
             isPremiumRequired, 
+            freeCampusConnectLimit,
             showMockGateway,
             activeGateway,
             enableStripeGateway,
@@ -65,6 +67,7 @@ async function updateSettings(req, res) {
         }
 
         if (isPremiumRequired !== undefined) settings.isPremiumRequired = isPremiumRequired;
+        if (freeCampusConnectLimit !== undefined) settings.freeCampusConnectLimit = Math.max(0, parseInt(freeCampusConnectLimit) || 0);
         if (showMockGateway !== undefined) settings.showMockGateway = showMockGateway;
         if (activeGateway !== undefined) settings.activeGateway = activeGateway;
         if (enableStripeGateway !== undefined) settings.enableStripeGateway = enableStripeGateway;

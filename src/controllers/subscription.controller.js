@@ -43,11 +43,28 @@ async function purchaseSubscription(req, res) {
             });
         }
 
+        const settings = await getPremiumSettingsCached();
         let gatewayName = reqGateway;
         if (!gatewayName) {
-            const settings = await getPremiumSettingsCached();
             gatewayName = settings ? settings.activeGateway : (process.env.PAYMENT_GATEWAY || "mock");
         }
+
+        // Validate if requested gateway is enabled in admin settings
+        if (settings) {
+            if (gatewayName === "mock" && settings.showMockGateway === false) {
+                return res.status(400).json({ message: "Mock test gateway is currently disabled by administrator." });
+            }
+            if (gatewayName === "stripe" && !settings.enableStripeGateway) {
+                return res.status(400).json({ message: "Stripe payment gateway is currently disabled by administrator." });
+            }
+            if (gatewayName === "razorpay" && !settings.enableRazorpayGateway) {
+                return res.status(400).json({ message: "Razorpay payment gateway is currently disabled by administrator." });
+            }
+            if (gatewayName === "cashfree" && !settings.enableCashfreeGateway) {
+                return res.status(400).json({ message: "Cashfree payment gateway is currently disabled by administrator." });
+            }
+        }
+
         const gateway = gatewayFactory.getGateway(gatewayName);
 
         // CASE A: Initializing subscription checkout (no payment verification details provided yet)
