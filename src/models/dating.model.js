@@ -57,6 +57,4 @@ const datingProfileSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
-datingProfileSchema.index({ user: 1 });
-
 module.exports = mongoose.model("DatingProfile", datingProfileSchema);
