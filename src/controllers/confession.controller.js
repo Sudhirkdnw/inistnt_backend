@@ -788,16 +788,17 @@ const getUserConfessions = async (req, res) => {
         if (cursor) filter._id = { $lt: cursor };
 
         const confessions = await confessionModel.find(filter)
-            .select("confessionText category user isAnonymous likes commentCount isHidden isLocked isPinned isNSFW poll createdAt")
+            .select("confessionText category user isAnonymous likes commentCount isHidden isLocked isPinned isNSFW poll createdAt postType media isPremiumPost")
             .populate("user", "username fullName avatar")
             .sort({ _id: -1 })
             .limit(limit)
             .lean();
 
+        const sanitized = confessions.map(c => sanitizeConfession(c, req.user._id));
         const nextCursor = confessions.length === limit ? confessions[confessions.length - 1]._id : null;
 
         res.status(200).json({
-            confessions,
+            confessions: sanitized,
             nextCursor,
             hasMore: confessions.length === limit
         });
@@ -886,16 +887,16 @@ function sanitizeConfession(confession, currentUserId) {
     obj.isLikedByMe = currentUserId
         ? likesArr.some(id => id?.toString() === currentUserId?.toString())
         : false;
-    // ── Photo Confession Media Sanitization ────────────────────────────────
-    if (obj.postType === 'PHOTO' && obj.mediaStatus === 'ACTIVE' && Array.isArray(obj.media) && obj.media.length > 0) {
+    // ── Photo Confession Media Delivery (Visible to ALL Users) ─────────────
+    if (Array.isArray(obj.media) && obj.media.length > 0) {
         obj.media = obj.media.map(m => ({
             url: m.url,
             width: m.width || 0,
             height: m.height || 0
         }));
+        obj.postType = 'PHOTO';
     } else {
         obj.media = [];
-        obj.postType = 'TEXT';
     }
 
     if (obj.poll && obj.poll.options && obj.poll.options.length > 0) {

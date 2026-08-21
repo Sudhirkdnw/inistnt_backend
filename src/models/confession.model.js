@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const CONFESSION_CATEGORIES = ["crush", "love", "study", "funny", "secret", "advice"];
+const CONFESSION_CATEGORIES = ["crush", "love", "study", "funny", "secret", "advice", "other"];
 
 
 
