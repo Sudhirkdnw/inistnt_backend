@@ -20,7 +20,8 @@ if (REDIS_URL) {
         // DO NOT set to false: the Socket.IO adapter calls psubscribe on init
         // before the TCP connection is established, causing a crash.
         lazyConnect: false,
-        pingInterval: 10000, // Sends PING at app layer every 10s (crucial for Upstash/cloud Redis)
+        pingInterval: 10000, // Sends PING at app layer every 10s
+        keepAlive: 10000,    // TCP level keep-alive to prevent cloud timeouts
         family: 0, // Auto-detect IPv4/IPv6
         maxRetriesPerRequest: null, // Critical for long-running pub/sub & socket.io
         retryStrategy: (times) => {
@@ -42,13 +43,13 @@ if (REDIS_URL) {
 
     redisClient.on('connect',       () => console.log('✅ Redis connected (cache)'));
     redisClient.on('ready',         () => console.log('✅ Redis ready (cache)'));
-    redisClient.on('error',         (err) => console.warn('⚠️  Redis cache warning:', err.message));
-    redisClient.on('close',         () => console.warn('ℹ️  Redis cache connection closed, reconnecting...'));
+    redisClient.on('error',         (err) => console.log('ℹ️  Redis cache status:', err.message));
+    redisClient.on('close',         () => console.log('ℹ️  Redis cache connection closed, reconnecting...'));
 
     redisSubscriber.on('connect',   () => console.log('✅ Redis connected (pubsub)'));
     redisSubscriber.on('ready',     () => console.log('✅ Redis ready (pubsub)'));
-    redisSubscriber.on('error',     (err) => console.warn('⚠️  Redis pubsub warning:', err.message));
-    redisSubscriber.on('close',     () => console.warn('ℹ️  Redis pubsub connection closed, reconnecting...'));
+    redisSubscriber.on('error',     (err) => console.log('ℹ️  Redis pubsub status:', err.message));
+    redisSubscriber.on('close',     () => console.log('ℹ️  Redis pubsub connection closed, reconnecting...'));
 
     // Wait for BOTH connections to be ready before server.js attaches the adapter
     redisReady = Promise.all([
