@@ -4,6 +4,7 @@ const { authMiddleware } = require("../middlewares/authmiddleware");
 const adminMiddleware = require("../middlewares/adminMiddleware");
 const requirePermission = require("../middlewares/permission.middleware");
 const ccAdmin = require("../controllers/adminCampusConnect.controller");
+const collegeHierarchyAdmin = require("../controllers/collegeHierarchy.controller");
 
 const {
     getDashboard, getAllUsers, getUserDetails, toggleBan, changeRole, deleteUser, restoreUser,
