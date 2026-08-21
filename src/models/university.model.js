@@ -23,6 +23,4 @@ const universitySchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
-universitySchema.index({ name: 1 });
-
 module.exports = mongoose.model("University", universitySchema);
