@@ -132,37 +132,38 @@ io.on("connection", (socket) => {
         try {
             const MAX_CONNECTIONS_PER_USER = parseInt(process.env.MAX_CONNECTIONS_PER_USER) || 3;
             
-            if (redisClient) {
+            if (redisClient && redisClient.status === 'ready') {
                 // Use Redis INCR counter for connection limits
                 const connKey = `socket_conns:${uid}`;
                 const count = await redisClient.incr(connKey);
                 await redisClient.expire(connKey, 86400);
 
                 if (count > MAX_CONNECTIONS_PER_USER) {
-                    await redisClient.decr(connKey);
+                    await redisClient.decr(connKey).catch(() => {});
                     socket.emit('forced_disconnect', { reason: 'Too many concurrent connections.' });
                     socket.disconnect(true);
                     return;
                 }
 
                 // --- ONLINE STATUS TRACKING (REDIS) ---
-                await redisClient.sadd("online_users", uid);
-                const currentOnline = await redisClient.smembers("online_users");
+                await redisClient.sadd("online_users", uid).catch(() => {});
+                const currentOnline = await redisClient.smembers("online_users").catch(() => []);
                 io.emit('online-users', currentOnline); // Broadcast to all for APK compatibility
 
                 // Decrement counter on disconnect
                 socket.once('disconnect', async () => {
                     try { 
-                        // connection limit decr
-                        await redisClient.decr(connKey); 
+                        if (redisClient && redisClient.status === 'ready') {
+                            await redisClient.decr(connKey).catch(() => {}); 
+                        }
                         
                         // online status srem: wait a bit to allow fast reconnects
                         setTimeout(async () => {
                             try {
                                 const sockets = await io.in(uid).fetchSockets();
-                                if (sockets.length === 0) {
-                                    await redisClient.srem("online_users", uid);
-                                    const updatedOnline = await redisClient.smembers("online_users");
+                                if (sockets.length === 0 && redisClient && redisClient.status === 'ready') {
+                                    await redisClient.srem("online_users", uid).catch(() => {});
+                                    const updatedOnline = await redisClient.smembers("online_users").catch(() => []);
                                     io.emit("online-users", updatedOnline); // Broadcast to all
                                 }
                             } catch (_) {}
@@ -187,7 +188,11 @@ io.on("connection", (socket) => {
                 });
             }
         } catch (err) {
-            console.error('Error enforcing socket connection limit:', err);
+            if (!err.message?.includes('Connection is closed')) {
+                console.warn('Socket connection limit fallback to memory:', err.message);
+            }
+            memoryOnlineUsers.add(uid);
+            io.emit('online-users', Array.from(memoryOnlineUsers));
         }
 
         socket.join(uid);
@@ -198,17 +203,17 @@ io.on("connection", (socket) => {
         socket.join(conversationId);
         try {
             const conv = await require('./src/models/conversation.model').findById(conversationId).select('isAnonymousChat anonymousIdentities');
-            if (conv && conv.isAnonymousChat && redisClient) {
+            if (conv && conv.isAnonymousChat && redisClient && redisClient.status === 'ready') {
                 const identitiesObj = {};
                 if (conv.anonymousIdentities && typeof conv.anonymousIdentities.forEach === 'function') {
                     conv.anonymousIdentities.forEach((val, key) => identitiesObj[key] = val);
                 } else if (conv.anonymousIdentities) {
                     Object.assign(identitiesObj, conv.anonymousIdentities);
                 }
-                await redisClient.set(`anonymous_room:${conversationId}`, JSON.stringify(identitiesObj), 'EX', 3600);
+                await redisClient.set(`anonymous_room:${conversationId}`, JSON.stringify(identitiesObj), 'EX', 3600).catch(() => {});
             }
         } catch (e) {
-            console.error("Error caching anonymous identities in Redis:", e);
+            // Ignore background caching errors
         }
     });
 
