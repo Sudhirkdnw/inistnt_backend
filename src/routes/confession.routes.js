@@ -1,4 +1,5 @@
 const express = require('express');
+const router = express.Router();
 const { authMiddleware } = require('../middlewares/authmiddleware');
 const cacheMiddleware = require('../middlewares/cacheMiddleware');
 const multer = require('multer');
