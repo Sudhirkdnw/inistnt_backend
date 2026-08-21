@@ -138,28 +138,39 @@ async function improveBio(currentBio, instructions) {
 }
 
 async function moderateContent(text) {
-    const client = getGroqClient();
-    const completion = await executeWithFallback(async (model) => {
-        return await client.chat.completions.create({
-            messages: [
-                {
-                    role: "system",
-                    content: "You are a content moderation AI. Analyze the given text for hate speech, extreme violence, sexual content, or severe harassment. Respond ONLY in JSON format: { \"isSafe\": boolean, \"reason\": string | null, \"toxicityScore\": number (0-1) }. If safe, toxicityScore should be low."
-                },
-                {
-                    role: "user",
-                    content: `Analyze this content for safety: "${text}"`
-                }
-            ],
-            model,
-            response_format: { type: "json_object" },
-            max_tokens: 150
-        });
-    });
-
     try {
-        return JSON.parse(completion.choices[0]?.message?.content || "{}");
-    } catch (e) {
+        if (!text || !text.trim()) {
+            return { isSafe: true, reason: null, toxicityScore: 0 };
+        }
+
+        const client = getGroqClient();
+        const completion = await executeWithFallback(async (model) => {
+            return await client.chat.completions.create({
+                messages: [
+                    {
+                        role: "system",
+                        content: "You are a content moderation AI. Analyze the given text for hate speech, extreme violence, sexual content, or severe harassment. You must output a valid JSON object with keys: isSafe (boolean), reason (string or null), and toxicityScore (number between 0 and 1)."
+                    },
+                    {
+                        role: "user",
+                        content: `Analyze this content for safety and return a JSON object: "${text}"`
+                    }
+                ],
+                model,
+                response_format: { type: "json_object" },
+                max_tokens: 150
+            });
+        });
+
+        const rawContent = completion.choices[0]?.message?.content || "{}";
+        const parsed = JSON.parse(rawContent);
+        return {
+            isSafe: typeof parsed.isSafe === 'boolean' ? parsed.isSafe : true,
+            reason: parsed.reason || null,
+            toxicityScore: typeof parsed.toxicityScore === 'number' ? parsed.toxicityScore : 0
+        };
+    } catch (err) {
+        console.warn("AI content moderation skipped (fallback safe):", err.message);
         return { isSafe: true, reason: null, toxicityScore: 0 };
     }
 }

@@ -96,6 +96,10 @@ class MonitoringController {
                 timestamp: { $gt: fiveMinutesAgo }
             }).limit(5);
 
+            // 6. Real-time MongoDB and Redis storage metrics
+            const { getStorageMetrics } = require("../utils/storageMetrics");
+            const storageMetrics = await getStorageMetrics();
+
             res.status(200).json({
                 success: true,
                 analytics: {
@@ -113,9 +117,10 @@ class MonitoringController {
                         avgQueueLatencyMs: parseInt(avgQueueLatency),
                         avgApiLatencyMs: parseInt(avgApiLatency)
                     },
+                    storageMetrics,
                     systemHealth: {
-                        redisAdapterStatus: "CONNECTED",
-                        databaseStatus: "CONNECTED",
+                        redisAdapterStatus: storageMetrics.redis.status === "Healthy" ? "CONNECTED" : "OFFLINE",
+                        databaseStatus: storageMetrics.mongo.status === "Healthy" ? "CONNECTED" : "OFFLINE",
                         emailWorkerStatus: activeWorkerLogs.length > 0 || totalEmails > 0 ? "HEALTHY" : "IDLE"
                     }
                 }

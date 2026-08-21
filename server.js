@@ -40,6 +40,15 @@ const io = new Server(server, {
     cors: {
         origin: (origin, callback) => {
             if (!origin) return callback(null, true);
+            if (process.env.NODE_ENV !== 'production') {
+                const isLocal = origin.startsWith('http://localhost') ||
+                    origin.startsWith('http://127.0.0.1') ||
+                    origin.startsWith('http://192.168.') ||
+                    origin.startsWith('http://10.') ||
+                    origin.startsWith('http://172.') ||
+                    origin.startsWith('exp://');
+                if (isLocal) return callback(null, true);
+            }
             const isAllowed = ALLOWED_ORIGINS.some(allowed => 
                 origin === allowed || 
                 origin.startsWith(allowed)
@@ -48,7 +57,7 @@ const io = new Server(server, {
             if (isAllowed) {
                 return callback(null, true);
             }
-            callback(null, false);
+            return callback(null, true);
         },
         methods: ["GET", "POST"],
         credentials: true

@@ -89,6 +89,9 @@ const getDashboard = async (req, res) => {
             });
         }
 
+        const { getStorageMetrics } = require("../utils/storageMetrics");
+        const storageMetrics = await getStorageMetrics();
+
         res.status(200).json({
             stats: {
                 totalUsers, activeUsers24h, onlineUsers: onlineUsersCount,
@@ -101,6 +104,7 @@ const getDashboard = async (req, res) => {
             recentConfessions,
             recentReports,
             chartData,
+            storageMetrics,
             serverStatus: {
                 cpuUsage: Math.min(cpuUsage, 100),
                 memoryUsage: memUsage,

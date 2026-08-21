@@ -24,8 +24,15 @@ if (REDIS_URL) {
         family: 0, // Auto-detect IPv4/IPv6
         maxRetriesPerRequest: null, // Critical for long-running pub/sub & socket.io
         retryStrategy: (times) => {
-            if (times > 10) return null; // Increased to 10 retries
-            return Math.min(times * 1000, 5000); // Backoff up to 5s
+            // Keep reconnecting continuously with exponential backoff (never return null)
+            return Math.min(times * 500, 5000); 
+        },
+        reconnectOnError: (err) => {
+            const targetError = 'READONLY';
+            if (err.message.includes(targetError)) {
+                return true;
+            }
+            return false;
         },
         tls: REDIS_URL.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined, // Allow self-signed/cloud certificates
     };
@@ -35,15 +42,26 @@ if (REDIS_URL) {
 
     redisClient.on('connect',       () => console.log('✅ Redis connected (cache)'));
     redisClient.on('ready',         () => console.log('✅ Redis ready (cache)'));
-    redisClient.on('error',         (err) => console.warn('⚠️  Redis cache error:', err.message));
+    redisClient.on('error',         (err) => console.warn('⚠️  Redis cache warning:', err.message));
+    redisClient.on('close',         () => console.warn('ℹ️  Redis cache connection closed, reconnecting...'));
+
     redisSubscriber.on('connect',   () => console.log('✅ Redis connected (pubsub)'));
     redisSubscriber.on('ready',     () => console.log('✅ Redis ready (pubsub)'));
-    redisSubscriber.on('error',     (err) => console.warn('⚠️  Redis pubsub error:', err.message));
+    redisSubscriber.on('error',     (err) => console.warn('⚠️  Redis pubsub warning:', err.message));
+    redisSubscriber.on('close',     () => console.warn('ℹ️  Redis pubsub connection closed, reconnecting...'));
 
     // Wait for BOTH connections to be ready before server.js attaches the adapter
     redisReady = Promise.all([
-        new Promise((res) => redisClient.once('ready', res)),
-        new Promise((res) => redisSubscriber.once('ready', res)),
+        new Promise((res) => {
+            if (redisClient.status === 'ready') return res();
+            redisClient.once('ready', res);
+            redisClient.once('error', () => res()); // Don't block server if Redis fails initially
+        }),
+        new Promise((res) => {
+            if (redisSubscriber.status === 'ready') return res();
+            redisSubscriber.once('ready', res);
+            redisSubscriber.once('error', () => res());
+        }),
     ]);
 } else {
     console.log('ℹ️  REDIS_URL not set — using in-memory cache (single-process only)');
