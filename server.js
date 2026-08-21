@@ -199,8 +199,40 @@ io.on("connection", (socket) => {
         socket.userId = uid;
     });
 
-    socket.on("join-conversation", async (conversationId) => {
+    const { 
+        setUserActiveConversation, 
+        removeUserActiveConversation, 
+        cleanupSocketPresence 
+    } = require('./src/utils/presence');
+
+    const handleJoinConversation = async (payload) => {
+        const conversationId = typeof payload === 'object' ? payload.conversationId : payload;
+        if (!conversationId) return;
+
         socket.join(conversationId);
+
+        if (socket.userId) {
+            await setUserActiveConversation(socket.userId, socket.id, conversationId);
+
+            // Mark unread messages in this conversation as read
+            try {
+                const MessageModel = require('./src/models/message.model');
+                const updateRes = await MessageModel.updateMany(
+                    { conversation: conversationId, sender: { $ne: socket.userId }, readBy: { $ne: socket.userId } },
+                    { $addToSet: { readBy: socket.userId } }
+                );
+
+                if (updateRes.modifiedCount > 0) {
+                    io.to(conversationId).emit("messages-read", { 
+                        conversationId, 
+                        readBy: socket.userId 
+                    });
+                }
+            } catch (err) {
+                // Ignore read update errors
+            }
+        }
+
         try {
             const conv = await require('./src/models/conversation.model').findById(conversationId).select('isAnonymousChat anonymousIdentities');
             if (conv && conv.isAnonymousChat && redisClient && redisClient.status === 'ready') {
@@ -215,16 +247,29 @@ io.on("connection", (socket) => {
         } catch (e) {
             // Ignore background caching errors
         }
-    });
+    };
 
-    socket.on("leave-conversation", (conversationId) => {
+    const handleLeaveConversation = async (payload) => {
+        const conversationId = typeof payload === 'object' ? payload.conversationId : payload;
+        if (!conversationId) return;
+
         socket.leave(conversationId);
-    });
+
+        if (socket.userId) {
+            await removeUserActiveConversation(socket.userId, socket.id, conversationId);
+        }
+    };
+
+    socket.on("join-conversation", handleJoinConversation);
+    socket.on("conversation:active", handleJoinConversation);
+
+    socket.on("leave-conversation", handleLeaveConversation);
+    socket.on("conversation:inactive", handleLeaveConversation);
 
     socket.on("typing", async ({ conversationId, username }) => {
         let emitUsername = username;
-        if (redisClient) {
-            const identitiesStr = await redisClient.get(`anonymous_room:${conversationId}`);
+        if (redisClient && redisClient.status === 'ready') {
+            const identitiesStr = await redisClient.get(`anonymous_room:${conversationId}`).catch(() => null);
             if (identitiesStr) {
                 try {
                     const identities = JSON.parse(identitiesStr);
@@ -239,8 +284,8 @@ io.on("connection", (socket) => {
 
     socket.on("stop-typing", async ({ conversationId, username }) => {
         let emitUsername = username;
-        if (redisClient) {
-            const identitiesStr = await redisClient.get(`anonymous_room:${conversationId}`);
+        if (redisClient && redisClient.status === 'ready') {
+            const identitiesStr = await redisClient.get(`anonymous_room:${conversationId}`).catch(() => null);
             if (identitiesStr) {
                 try {
                     const identities = JSON.parse(identitiesStr);
@@ -254,7 +299,7 @@ io.on("connection", (socket) => {
     });
 
     socket.on("disconnect", () => {
-        // Rooms are automatically cleaned up by Socket.IO and the Redis adapter
+        cleanupSocketPresence(socket.id, socket.userId);
     });
 });
 

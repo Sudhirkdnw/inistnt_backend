@@ -309,6 +309,28 @@ async function getMessages(req, res) {
             return m;
         });
 
+        // Mark existing unread messages as read in background
+        setImmediate(async () => {
+            try {
+                const updateRes = await Message.updateMany(
+                    { conversation: id, sender: { $ne: currentUserId }, readBy: { $ne: currentUserId } },
+                    { $addToSet: { readBy: currentUserId } }
+                );
+
+                if (updateRes.modifiedCount > 0) {
+                    const io = req.app.get("io");
+                    if (io) {
+                        io.to(id).emit("messages-read", {
+                            conversationId: id,
+                            readBy: currentUserId.toString()
+                        });
+                    }
+                }
+            } catch (err) {
+                // Ignore read update errors
+            }
+        });
+
         res.status(200).json(messages.reverse());
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -348,6 +370,23 @@ async function sendMessage(req, res) {
             return res.status(403).json({ message: "Not a participant in this conversation" });
         }
 
+        const { isUserActiveInConversation } = require("../utils/presence");
+
+        // Check which recipients are currently active in this conversation
+        const initialReadBy = [currentUserId];
+        const activeRecipientIds = [];
+
+        for (const p of conversation.participants) {
+            const pid = p.toString();
+            if (pid !== currentUserId.toString()) {
+                const isActive = await isUserActiveInConversation(pid, id);
+                if (isActive) {
+                    initialReadBy.push(p);
+                    activeRecipientIds.push(pid);
+                }
+            }
+        }
+
         const message = await Message.create({
             conversation: id,
             sender: currentUserId,
@@ -355,7 +394,7 @@ async function sendMessage(req, res) {
             mediaUrl,
             mediaType,
             replyTo: replyTo || undefined,
-            readBy: [currentUserId]
+            readBy: initialReadBy
         });
 
         await message.populate("sender", "username avatar");
@@ -379,11 +418,23 @@ async function sendMessage(req, res) {
             // For sender
             io.to(currentUserId.toString()).emit("receive-message", msgPayload);
 
+            // If recipient is already actively in the chat, emit read receipt back to sender immediately
+            if (activeRecipientIds.length > 0) {
+                activeRecipientIds.forEach(activePid => {
+                    io.to(currentUserId.toString()).emit("messages-read", {
+                        conversationId: id,
+                        readBy: activePid
+                    });
+                });
+            }
+
             conversation.participants.forEach(participantId => {
                 const pid = participantId.toString();
                 if (pid !== currentUserId.toString()) {
+                    const isRecipientActive = activeRecipientIds.includes(pid);
+
                     // For recipient, check anonymity
-                    let recipientMsgPayload = JSON.parse(JSON.stringify(msgPayload)); // Deep copy to avoid mutating reference for other recipients
+                    let recipientMsgPayload = JSON.parse(JSON.stringify(msgPayload));
                     if (conversation.isAnonymousChat) {
                         const sId = currentUserId.toString();
 
@@ -407,35 +458,64 @@ async function sendMessage(req, res) {
                         }
                     }
 
+                    // Always deliver realtime message to recipient's active socket
                     io.to(pid).emit("receive-message", recipientMsgPayload);
 
-                    // Lightweight notification
-                    const notifPayload = {
-                        conversationId: id,
-                        sender: recipientMsgPayload.sender,
-                        text: message.text,
-                        messageId: message._id.toString()
-                    };
-                    io.to(pid).emit("new-message-notification", notifPayload);
+                    // ONLY send notifications if recipient is NOT actively viewing this chat
+                    if (!isRecipientActive) {
+                        // Lightweight in-app banner trigger
+                        const notifPayload = {
+                            conversationId: id,
+                            sender: recipientMsgPayload.sender,
+                            text: message.text,
+                            messageId: message._id.toString()
+                        };
+                        io.to(pid).emit("new-message-notification", notifPayload);
 
-                    // Send Mobile Push Notification
-                    const { sendPushNotificationToUser } = require("../utils/pushNotifications");
-                    const senderName = recipientMsgPayload.sender.fullName || recipientMsgPayload.sender.username || "Someone";
-                    const pushTitle = `💬 New message from ${senderName} 📨`;
-                    const pushBody = message.text
-                        ? message.text
-                        : message.mediaType
-                            ? `Sent a ${message.mediaType}`
-                            : "Sent an attachment";
-                    sendPushNotificationToUser(pid, pushTitle, pushBody, {
-                        type: "message",
-                        conversationId: id.toString()
-                    });
+                        // Send Mobile Push Notification
+                        const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+                        const senderName = recipientMsgPayload.sender.fullName || recipientMsgPayload.sender.username || "Someone";
+                        const pushTitle = `💬 New message from ${senderName} 📨`;
+                        const pushBody = message.text
+                            ? message.text
+                            : message.mediaType
+                                ? `Sent a ${message.mediaType}`
+                                : "Sent an attachment";
+                        sendPushNotificationToUser(pid, pushTitle, pushBody, {
+                            type: "message",
+                            conversationId: id.toString()
+                        });
+                    }
                 }
             });
         }
 
         res.status(201).json(message);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+}
+
+// PUT /api/chat/:id/read — Mark conversation as read
+async function markConversationAsRead(req, res) {
+    try {
+        const { id } = req.params;
+        const currentUserId = req.user._id;
+
+        const updateRes = await Message.updateMany(
+            { conversation: id, sender: { $ne: currentUserId }, readBy: { $ne: currentUserId } },
+            { $addToSet: { readBy: currentUserId } }
+        );
+
+        const io = req.app.get("io");
+        if (io && updateRes.modifiedCount > 0) {
+            io.to(id).emit("messages-read", {
+                conversationId: id,
+                readBy: currentUserId.toString()
+            });
+        }
+
+        res.status(200).json({ success: true, markedCount: updateRes.modifiedCount });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -729,7 +809,8 @@ module.exports = {
     deleteMessage,
     deleteConversation,
     likeMessage,
-    markAsRead,
+    markAsRead: markConversationAsRead,
+    markConversationAsRead,
     contactAdmin,
     createGroupConversation,
     exitGroupConversation
