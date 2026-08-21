@@ -383,3 +383,183 @@ exports.adminDeleteBranch = async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 };
+
+/**
+ * CSV Line Parser supporting quoted fields with commas
+ */
+function parseCSVRow(text) {
+    const p = [];
+    let cur = '';
+    let inQuote = false;
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (c === '"') {
+            if (inQuote && text[i + 1] === '"') {
+                cur += '"';
+                i++;
+            } else {
+                inQuote = !inQuote;
+            }
+        } else if (c === ',' && !inQuote) {
+            p.push(cur.trim());
+            cur = '';
+        } else {
+            cur += c;
+        }
+    }
+    p.push(cur.trim());
+    return p;
+}
+
+// ── BULK CSV UPLOAD ENGINE ──────────────────────────────────────────────────
+exports.adminBulkUploadCSV = async (req, res) => {
+    try {
+        let csvContent = "";
+        const category = (req.params.category || req.body.category || "unified").toLowerCase();
+
+        if (req.file) {
+            csvContent = req.file.buffer.toString("utf-8");
+        } else if (req.body.csvData) {
+            csvContent = req.body.csvData;
+        } else {
+            return res.status(400).json({ message: "CSV file or raw CSV data is required" });
+        }
+
+        const lines = csvContent.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+        if (lines.length < 2) {
+            return res.status(400).json({ message: "CSV file is empty or missing headers" });
+        }
+
+        const rawHeaders = parseCSVRow(lines[0]);
+        const headers = rawHeaders.map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+
+        let importedCount = 0;
+        let skippedCount = 0;
+        const errors = [];
+
+        const uniOps = [];
+        const collegeOps = [];
+        const deptOps = [];
+        const branchOps = [];
+
+        for (let i = 1; i < lines.length; i++) {
+            const row = parseCSVRow(lines[i]);
+            if (row.length === 0 || (row.length === 1 && !row[0])) continue;
+
+            const rowData = {};
+            headers.forEach((h, idx) => {
+                rowData[h] = row[idx] ? row[idx].trim() : "";
+            });
+
+            const rowType = (rowData.type || category).toLowerCase();
+            const name = rowData.name || rowData.title || rowData.collegename || rowData.universityname || rowData.departmentname || rowData.branchname;
+
+            if (!name) {
+                skippedCount++;
+                errors.push(`Row ${i + 1}: Missing name field`);
+                continue;
+            }
+
+            const isActive = rowData.isactive !== undefined && rowData.isactive !== "" 
+                ? (rowData.isactive.toLowerCase() !== "false" && rowData.isactive !== "0") 
+                : true;
+
+            if (rowType.includes("uni")) {
+                uniOps.push({
+                    updateOne: {
+                        filter: { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+                        update: {
+                            $set: {
+                                name,
+                                city: rowData.city || "",
+                                state: rowData.state || "",
+                                isActive
+                            }
+                        },
+                        upsert: true
+                    }
+                });
+            } else if (rowType.includes("camp") || rowType.includes("coll")) {
+                collegeOps.push({
+                    updateOne: {
+                        filter: { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+                        update: {
+                            $set: {
+                                name,
+                                code: rowData.code || "",
+                                city: rowData.city || "",
+                                state: rowData.state || "",
+                                isActive
+                            }
+                        },
+                        upsert: true
+                    }
+                });
+            } else if (rowType.includes("dept") || rowType.includes("depart")) {
+                deptOps.push({
+                    updateOne: {
+                        filter: { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+                        update: {
+                            $set: {
+                                name,
+                                code: rowData.code || "",
+                                isActive
+                            }
+                        },
+                        upsert: true
+                    }
+                });
+            } else if (rowType.includes("branch") || rowType.includes("course") || rowType.includes("major")) {
+                branchOps.push({
+                    updateOne: {
+                        filter: { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+                        update: {
+                            $set: {
+                                name,
+                                degree: rowData.degree || "",
+                                isActive
+                            }
+                        },
+                        upsert: true
+                    }
+                });
+            } else {
+                skippedCount++;
+                errors.push(`Row ${i + 1}: Unknown type "${rowType}" for name "${name}"`);
+            }
+        }
+
+        // Execute bulkWrite in parallel for each category
+        const [uniRes, collegeRes, deptRes, branchRes] = await Promise.all([
+            uniOps.length > 0 ? University.bulkWrite(uniOps, { ordered: false }) : null,
+            collegeOps.length > 0 ? College.bulkWrite(collegeOps, { ordered: false }) : null,
+            deptOps.length > 0 ? Department.bulkWrite(deptOps, { ordered: false }) : null,
+            branchOps.length > 0 ? Branch.bulkWrite(branchOps, { ordered: false }) : null
+        ]);
+
+        const calcUpserts = (resObj) => {
+            if (!resObj) return 0;
+            return (resObj.upsertedCount || 0) + (resObj.modifiedCount || 0) + (resObj.matchedCount || 0);
+        };
+
+        importedCount = calcUpserts(uniRes) + calcUpserts(collegeRes) + calcUpserts(deptRes) + calcUpserts(branchRes);
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully processed CSV. Imported/Updated ${importedCount} items (${skippedCount} skipped).`,
+            importedCount,
+            skippedCount,
+            breakdown: {
+                universities: calcUpserts(uniRes),
+                colleges: calcUpserts(collegeRes),
+                departments: calcUpserts(deptRes),
+                branches: calcUpserts(branchRes)
+            },
+            errors: errors.slice(0, 10)
+        });
+    } catch (err) {
+        console.error("Bulk CSV upload error:", err);
+        res.status(500).json({ message: "Failed to process CSV: " + err.message });
+    }
+};
+
