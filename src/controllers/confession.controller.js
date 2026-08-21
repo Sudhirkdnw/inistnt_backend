@@ -53,7 +53,16 @@ const createConfession = async (req, res) => {
         let mediaList = [];
 
         if (hasPhotos) {
-            // Strict Backend Premium Check
+            // 1. Dynamic Feature Flag Check (Admin Feature Toggle)
+            const isFeatureEnabled = getSetting('premium_photo_confessions_enabled', false);
+            if (!isFeatureEnabled && req.user.role !== "admin") {
+                return res.status(403).json({
+                    message: "Premium Photo Confessions is currently disabled by system administrators.",
+                    featureDisabled: true
+                });
+            }
+
+            // 2. Strict Backend Premium Check
             const now = new Date();
             const isPremium = req.user.role === "admin" || (req.user.isPremium && req.user.premiumExpireAt && new Date(req.user.premiumExpireAt) > now);
 

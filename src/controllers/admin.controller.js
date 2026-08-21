@@ -119,63 +119,441 @@ const getDashboard = async (req, res) => {
     }
 };
 
-// GET /api/admin/users
+// GET /api/admin/users — Enterprise User Querying with Multi-Filtering & Server-Side Sorting
 const getAllUsers = async (req, res) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
         const skip = (page - 1) * limit;
-        const search = req.query.search || "";
-        const status = req.query.status || "all"; // all, active, banned, soft_deleted
+
+        const search = (req.query.search || "").trim();
+        const status = req.query.status || "all";
+        const verification = req.query.verification || "all";
+        const premium = req.query.premium || "all";
+        const role = req.query.role || "all";
+        const college = (req.query.college || "").trim();
+        const campusConnect = req.query.campusConnect || "all";
+        const dateRange = req.query.dateRange || "all";
+        const sortBy = req.query.sortBy || "createdAt";
+        const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
 
         let filter = {};
 
+        // ── 1. Search Query ───────────────────────────────────────────────────
         if (search) {
-            filter.$or = [
-                { username: { $regex: search, $options: "i" } },
-                { fullName: { $regex: search, $options: "i" } }
+            const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const searchRegex = new RegExp(escaped, "i");
+
+            const orConditions = [
+                { username: searchRegex },
+                { fullName: searchRegex },
+                { email: searchRegex },
+                { collegeName: searchRegex },
+                { university: searchRegex }
             ];
+
+            // If valid MongoDB ObjectId, allow searching by direct user ID
+            if (/^[0-9a-fA-F]{24}$/.test(search)) {
+                orConditions.push({ _id: search });
+            }
+
+            filter.$or = orConditions;
         }
 
+        // ── 2. Account Status Filter ──────────────────────────────────────────
+        const now = new Date();
         if (status === "active") {
-            filter.isSoftDeleted = false;
-            filter.isBanned = false;
+            filter.isBanned = { $ne: true };
+            filter.isSoftDeleted = { $ne: true };
+            filter.$or = [
+                { isSuspended: { $ne: true } },
+                { suspendedUntil: { $lte: now } }
+            ];
         } else if (status === "banned") {
             filter.isBanned = true;
+        } else if (status === "suspended") {
+            filter.isSuspended = true;
+            filter.suspendedUntil = { $gt: now };
         } else if (status === "soft_deleted") {
             filter.isSoftDeleted = true;
         }
 
-        const users = await userModel.find(filter)
-            .select("username fullName avatar email role isBanned isSoftDeleted isPremium premiumExpireAt createdAt loginHistory.isSuspicious")
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit);
-        const total = await userModel.countDocuments(filter);
+        // ── 3. Verification Filter ────────────────────────────────────────────
+        if (verification === "verified") {
+            filter.$or = [
+                { isVerified: true },
+                { verificationStatus: { $in: ["verified", "VERIFIED", "APPROVED"] } }
+            ];
+        } else if (verification === "pending") {
+            filter.verificationStatus = { $in: ["pending", "PENDING"] };
+        } else if (verification === "rejected") {
+            filter.verificationStatus = { $in: ["rejected", "REJECTED"] };
+        } else if (verification === "none") {
+            filter.isVerified = false;
+            filter.verificationStatus = { $in: ["none", null, ""] };
+        }
 
-        res.status(200).json({ users, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+        // ── 4. Premium Filter ─────────────────────────────────────────────────
+        if (premium === "premium_active" || premium === "active") {
+            filter.isPremium = true;
+            filter.premiumExpireAt = { $gt: now };
+        } else if (premium === "premium_expired" || premium === "expired") {
+            filter.isPremium = true;
+            filter.premiumExpireAt = { $lte: now };
+        } else if (premium === "free") {
+            filter.isPremium = { $ne: true };
+        }
+
+        // ── 5. Role Filter ────────────────────────────────────────────────────
+        if (role && role !== "all") {
+            filter.role = role;
+        }
+
+        // ── 6. College / University Filter ────────────────────────────────────
+        if (college) {
+            const escapedCol = college.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const colRegex = new RegExp(escapedCol, "i");
+            filter.$or = [
+                { collegeName: colRegex },
+                { university: colRegex }
+            ];
+        }
+
+        // ── 7. Campus Connect Completeness Filter ─────────────────────────────
+        if (campusConnect === "completed") {
+            filter.$and = [
+                { skills: { $exists: true, $not: { $size: 0 } } },
+                { interests: { $exists: true, $not: { $size: 0 } } },
+                { bio: { $exists: true, $ne: "" } }
+            ];
+        } else if (campusConnect === "incomplete") {
+            filter.$or = [
+                { skills: { $exists: false } },
+                { skills: { $size: 0 } },
+                { bio: { $in: ["", null] } }
+            ];
+        }
+
+        // ── 8. Registration Date Range ────────────────────────────────────────
+        if (dateRange === "today") {
+            const startOfDay = new Date();
+            startOfDay.setHours(0, 0, 0, 0);
+            filter.createdAt = { $gte: startOfDay };
+        } else if (dateRange === "7days") {
+            const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+            filter.createdAt = { $gte: sevenDaysAgo };
+        } else if (dateRange === "30days") {
+            const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+            filter.createdAt = { $gte: thirtyDaysAgo };
+        }
+
+        // ── 9. Sorting Configuration ──────────────────────────────────────────
+        let sortQuery = { createdAt: -1 };
+        if (sortBy === "fullName") sortQuery = { fullName: sortOrder, createdAt: -1 };
+        else if (sortBy === "username") sortQuery = { username: sortOrder };
+        else if (sortBy === "lastActive") sortQuery = { lastActive: sortOrder };
+        else if (sortBy === "createdAt") sortQuery = { createdAt: sortOrder };
+
+        const [users, total] = await Promise.all([
+            userModel.find(filter)
+                .select("username fullName avatar email role collegeName university department branch isBanned isSuspended suspendedUntil isSoftDeleted isVerified verificationStatus isPremium premiumExpireAt createdAt lastActive followers")
+                .sort(sortQuery)
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            userModel.countDocuments(filter)
+        ]);
+
+        // Transform lightweight stats
+        const formattedUsers = users.map(u => ({
+            ...u,
+            followersCount: Array.isArray(u.followers) ? u.followers.length : 0,
+            followers: undefined, // Hide raw ID list for response efficiency
+            isSuspendedActive: u.isSuspended && u.suspendedUntil && new Date(u.suspendedUntil) > now
+        }));
+
+        res.status(200).json({
+            success: true,
+            users: formattedUsers,
+            pagination: {
+                page,
+                limit,
+                total,
+                pages: Math.ceil(total / limit)
+            }
+        });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("getAllUsers error:", error);
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// GET /api/admin/users/:id
+// GET /api/admin/users/:id — 360-Degree Aggregated User Profile
 const getUserDetails = async (req, res) => {
     try {
-        const user = await userModel.findById(req.params.id).select("-password");
-        if (!user) return res.status(404).json({ message: "User not found" });
+        const user = await userModel.findById(req.params.id)
+            .select("-password")
+            .populate("followers", "username fullName avatar")
+            .populate("following", "username fullName avatar")
+            .lean();
 
-        const confessions = await confessionModel.find({ user: user._id }).sort({ createdAt: -1 });
-        const reportsAgainst = await reportModel.find({ targetId: user._id, targetType: "user" });
-        const suspiciousLogins = user.loginHistory.filter(h => h.isSuspicious).length;
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-        res.status(200).json({ user, confessions, reportsAgainst, security: { suspiciousLogins } });
+        const [confessions, confessionsCount, reportsAgainst, auditHistory] = await Promise.all([
+            confessionModel.find({ user: user._id })
+                .select("confessionText category isAnonymous likes commentsCount commentCount isHidden createdAt postType media mediaStatus")
+                .sort({ createdAt: -1 })
+                .limit(20)
+                .lean(),
+            confessionModel.countDocuments({ user: user._id }),
+            reportModel.find({ targetId: user._id })
+                .populate("reporter", "username avatar fullName")
+                .sort({ createdAt: -1 })
+                .lean(),
+            auditLogModel.find({ targetUser: user._id })
+                .populate("admin", "username email fullName")
+                .sort({ createdAt: -1 })
+                .limit(20)
+                .lean()
+        ]);
+
+        const totalLikesReceived = confessions.reduce((acc, c) => acc + (c.likes?.length || 0), 0);
+        const suspiciousLoginsCount = (user.loginHistory || []).filter(h => h.isSuspicious).length;
+
+        res.status(200).json({
+            success: true,
+            user,
+            stats: {
+                followersCount: user.followers?.length || 0,
+                followingCount: user.following?.length || 0,
+                confessionsCount,
+                reportsCount: reportsAgainst.length,
+                totalLikesReceived,
+                suspiciousLoginsCount
+            },
+            confessions,
+            reportsAgainst,
+            auditHistory,
+            security: {
+                lastIp: user.lastIp || "N/A",
+                lastActive: user.lastActive,
+                loginHistory: (user.loginHistory || []).slice(-15).reverse(),
+                suspiciousLoginsCount
+            }
+        });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("getUserDetails error:", error);
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// PUT /api/admin/users/:id/ban
+// PUT /api/admin/users/:id/status — Manage User Account Status (Active, Suspended, Banned)
+const updateUserStatus = async (req, res) => {
+    try {
+        const { status, suspendedDays, reason } = req.body;
+        const user = await userModel.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+        const previousValues = {
+            isBanned: user.isBanned,
+            isSuspended: user.isSuspended,
+            suspendedUntil: user.suspendedUntil
+        };
+
+        if (status === "banned") {
+            user.isBanned = true;
+            user.isSuspended = false;
+            user.suspendedUntil = null;
+        } else if (status === "suspended") {
+            user.isBanned = false;
+            user.isSuspended = true;
+            const days = parseInt(suspendedDays) || 7;
+            user.suspendedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+        } else if (status === "active") {
+            user.isBanned = false;
+            user.isSuspended = false;
+            user.suspendedUntil = null;
+            user.isSoftDeleted = false;
+        } else {
+            return res.status(400).json({ success: false, message: "Invalid status value. Must be 'active', 'suspended', or 'banned'." });
+        }
+
+        await user.save();
+
+        await logAudit(req.user._id, `SET_STATUS_${status.toUpperCase()}`, {
+            targetUser: user._id,
+            details: `Status set to ${status}. Reason: ${reason || 'No reason provided'}`,
+            ipAddress: req.ip,
+            previousValues,
+            updatedValues: {
+                isBanned: user.isBanned,
+                isSuspended: user.isSuspended,
+                suspendedUntil: user.suspendedUntil
+            }
+        });
+
+        // Real-time socket disconnection if banned or suspended
+        if ((user.isBanned || user.isSuspended) && global.ioInstance) {
+            const msg = user.isBanned 
+                ? "Your account has been banned by an administrator." 
+                : `Your account has been temporarily suspended until ${user.suspendedUntil.toLocaleDateString()}.`;
+            global.ioInstance.to(`user:${user._id}`).emit("force-logout", { message: msg });
+            global.ioInstance.in(`user:${user._id}`).disconnectSockets(true);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `User status successfully updated to ${status}`,
+            user: {
+                _id: user._id,
+                isBanned: user.isBanned,
+                isSuspended: user.isSuspended,
+                suspendedUntil: user.suspendedUntil
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// PUT /api/admin/users/:id/verify — Update User Verification Status
+const updateUserVerification = async (req, res) => {
+    try {
+        const { verificationStatus, notes } = req.body;
+        const validStatuses = ["verified", "pending", "rejected", "none", "VERIFIED", "REJECTED", "PENDING", "APPROVED"];
+        
+        if (!validStatuses.includes(verificationStatus)) {
+            return res.status(400).json({ success: false, message: "Invalid verification status." });
+        }
+
+        const user = await userModel.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+        const previousValues = {
+            isVerified: user.isVerified,
+            verificationStatus: user.verificationStatus
+        };
+
+        const isApproved = ["verified", "VERIFIED", "APPROVED"].includes(verificationStatus);
+        user.isVerified = isApproved;
+        user.verificationStatus = isApproved ? "verified" : verificationStatus.toLowerCase();
+        user.adminReviewNotes = notes || user.adminReviewNotes;
+        user.reviewedBy = req.user._id;
+        user.reviewedAt = new Date();
+
+        await user.save();
+
+        await logAudit(req.user._id, `VERIFICATION_${verificationStatus.toUpperCase()}`, {
+            targetUser: user._id,
+            details: `Verification updated to ${verificationStatus}. Notes: ${notes || 'None'}`,
+            ipAddress: req.ip,
+            previousValues,
+            updatedValues: { isVerified: user.isVerified, verificationStatus: user.verificationStatus }
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `User verification updated to ${verificationStatus}`,
+            isVerified: user.isVerified,
+            verificationStatus: user.verificationStatus
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// POST /api/admin/users/:id/revoke-sessions — Force Disconnect & Revoke All Active Sessions
+const forceLogoutUser = async (req, res) => {
+    try {
+        const user = await userModel.findById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+        if (global.ioInstance) {
+            global.ioInstance.to(`user:${user._id}`).emit("force-logout", { message: "Your sessions have been revoked by an administrator." });
+            global.ioInstance.in(`user:${user._id}`).disconnectSockets(true);
+        }
+
+        await logAudit(req.user._id, "REVOKE_ALL_SESSIONS", {
+            targetUser: user._id,
+            details: `Revoked all active sessions and socket connections for @${user.username}`,
+            ipAddress: req.ip
+        });
+
+        res.status(200).json({ success: true, message: `All active sessions for @${user.username} have been terminated.` });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// POST /api/admin/users/bulk-action — Enterprise Bulk Actions (Suspend, Activate, Verify, Ban)
+const bulkUsersAction = async (req, res) => {
+    try {
+        const { userIds, action, suspendedDays, reason } = req.body;
+        if (!Array.isArray(userIds) || userIds.length === 0) {
+            return res.status(400).json({ success: false, message: "Please provide an array of user IDs." });
+        }
+
+        let updateQuery = {};
+        const now = new Date();
+
+        if (action === "suspend") {
+            const days = parseInt(suspendedDays) || 7;
+            updateQuery = {
+                isSuspended: true,
+                isBanned: false,
+                suspendedUntil: new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
+            };
+        } else if (action === "activate") {
+            updateQuery = {
+                isBanned: false,
+                isSuspended: false,
+                suspendedUntil: null,
+                isSoftDeleted: false
+            };
+        } else if (action === "ban") {
+            updateQuery = {
+                isBanned: true,
+                isSuspended: false,
+                suspendedUntil: null
+            };
+        } else if (action === "verify") {
+            updateQuery = {
+                isVerified: true,
+                verificationStatus: "verified",
+                reviewedBy: req.user._id,
+                reviewedAt: now
+            };
+        } else {
+            return res.status(400).json({ success: false, message: "Unsupported bulk action." });
+        }
+
+        const result = await userModel.updateMany({ _id: { $in: userIds } }, { $set: updateQuery });
+
+        await logAudit(req.user._id, `BULK_${action.toUpperCase()}`, {
+            details: `Bulk ${action} executed on ${userIds.length} users. Reason: ${reason || 'Bulk action'}`,
+            ipAddress: req.ip,
+            updatedValues: updateQuery
+        });
+
+        // Socket disconnect if banning/suspending
+        if ((action === "ban" || action === "suspend") && global.ioInstance) {
+            userIds.forEach(uid => {
+                global.ioInstance.to(`user:${uid}`).emit("force-logout", { message: `Your account status was updated by an administrator.` });
+                global.ioInstance.in(`user:${uid}`).disconnectSockets(true);
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Successfully executed ${action} on ${result.modifiedCount} users.`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// PUT /api/admin/users/:id/ban — Legacy toggle support
 const toggleBan = async (req, res) => {
     try {
         const user = await userModel.findById(req.params.id);
@@ -183,6 +561,10 @@ const toggleBan = async (req, res) => {
 
         const previousValues = { isBanned: user.isBanned };
         user.isBanned = !user.isBanned;
+        if (!user.isBanned) {
+            user.isSuspended = false;
+            user.suspendedUntil = null;
+        }
         await user.save();
 
         await logAudit(req.user._id, user.isBanned ? 'BAN_USER' : 'UNBAN_USER', {
@@ -192,7 +574,6 @@ const toggleBan = async (req, res) => {
             updatedValues: { isBanned: user.isBanned }
         });
 
-        // Real-time socket ban disconnect
         if (user.isBanned && global.ioInstance) {
             global.ioInstance.to(`user:${user._id}`).emit("force-logout", { message: "Your account has been banned by an administrator." });
             global.ioInstance.in(`user:${user._id}`).disconnectSockets(true);
@@ -211,8 +592,8 @@ const changeRole = async (req, res) => {
             return res.status(400).json({ message: "Invalid role" });
         }
 
-        if (req.user.role !== 'superadmin') {
-            return res.status(403).json({ message: "Only superadmins can change user roles" });
+        if (req.user.role !== 'superadmin' && req.user.role !== 'admin') {
+            return res.status(403).json({ message: "Only administrators can change user roles" });
         }
 
         const user = await userModel.findById(req.params.id);
@@ -799,13 +1180,18 @@ const updateSetting = async (req, res) => {
         // but typically mailer utility does its own fetch/decrypt)
         updateSettingInCache(key, finalValue);
 
-        // Notify via Socket.IO for real-time effects (maintenance mode, banners, etc.)
-        const io = req.app.get("io");
+        // Notify via Socket.IO for real-time effects (maintenance mode, banners, feature flags)
+        const io = req.app.get("io") || global.ioInstance;
         if (io) {
             io.emit("settings-updated", { key, value });
+            io.emit("feature-flags-updated", { key, value });
         }
 
-        await logAudit(req.user._id, "update_setting", "setting", setting._id, { key, value });
+        await logAudit(req.user._id, "UPDATE_SETTING", {
+            details: `Setting '${key}' updated to '${value}'`,
+            ipAddress: req.ip,
+            updatedValues: { [key]: value }
+        });
 
         res.status(200).json({ message: `Setting ${key} updated`, setting });
     } catch (error) {
@@ -2001,6 +2387,7 @@ const revokeSecuritySession = async (req, res) => {
 
 module.exports = {
     getDashboard, getAllUsers, getUserDetails, toggleBan, changeRole, deleteUser, restoreUser,
+    updateUserStatus, updateUserVerification, forceLogoutUser, bulkUsersAction,
     getAllConfessions, toggleHideConfession, deleteAnyConfession,
     getReports, updateReport, getAnalytics,
     getPendingVerifications, handleVerification,

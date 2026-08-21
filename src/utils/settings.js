@@ -41,6 +41,7 @@ const syncSettings = async () => {
             { key: 'anonymous_chat', value: true, category: 'Features' },
             { key: 'dating_module', value: true, category: 'Features' },
             { key: 'min_dating_photos', value: 1, category: 'Features' },
+            { key: 'premium_photo_confessions_enabled', value: false, category: 'Features', description: 'Allow Premium users to attach and publish photos with their confessions.' },
             { key: 'app_logo', value: '', category: 'Branding' },
             { key: 'favicon', value: '', category: 'Branding' },
             { key: 'accent_color', value: '#0095f6', category: 'Branding' },

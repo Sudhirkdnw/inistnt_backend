@@ -8,6 +8,7 @@ const collegeHierarchyAdmin = require("../controllers/collegeHierarchy.controlle
 
 const {
     getDashboard, getAllUsers, getUserDetails, toggleBan, changeRole, deleteUser, restoreUser,
+    updateUserStatus, updateUserVerification, forceLogoutUser, bulkUsersAction,
     getAllConfessions, toggleHideConfession, deleteAnyConfession,
     getReports, updateReport, getAnalytics,
     getPendingVerifications, handleVerification,
@@ -62,7 +63,11 @@ router.get("/dashboard", getDashboard);
 router.get("/users", requirePermission("userManagement", "view"), getAllUsers);
 router.get("/users/export", requirePermission("userManagement", "view"), exportUsers);
 router.post("/users/bulk-delete", requirePermission("userManagement", "delete"), bulkDeleteUsers);
+router.post("/users/bulk-action", requirePermission("userManagement", "update"), bulkUsersAction);
 router.get("/users/:id", requirePermission("userManagement", "view"), getUserDetails);
+router.put("/users/:id/status", requirePermission("userManagement", "update"), updateUserStatus);
+router.put("/users/:id/verify", requirePermission("userManagement", "update"), updateUserVerification);
+router.post("/users/:id/revoke-sessions", requirePermission("userManagement", "update"), forceLogoutUser);
 router.put("/users/:id/ban", requirePermission("userManagement", "update"), toggleBan);
 router.put("/users/:id/role", requirePermission("userManagement", "update"), changeRole);
 router.delete("/users/:id", requirePermission("userManagement", "delete"), deleteUser);
