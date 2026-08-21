@@ -24,6 +24,11 @@ process.on('uncaughtException', (err) => {
     console.error('🔥 UNCAUGHT EXCEPTION:', err);
 });
 process.on('unhandledRejection', (reason, promise) => {
+    const errMsg = reason?.message || String(reason || '');
+    if (errMsg.includes('Connection is closed') || errMsg.includes('ECONNRESET') || errMsg.includes('read ECONNRESET')) {
+        console.log('ℹ️ [Transient] Redis connection cycled, reconnecting automatically...');
+        return;
+    }
     console.error('🔥 UNHANDLED REJECTION:', reason);
 });
 
