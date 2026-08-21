@@ -306,6 +306,9 @@ async function revokePremiumManual(req, res) {
         user.premiumExpireAt = null;
         await user.save();
 
+        const { cleanupExpiredPremiumPosts } = require('../services/subscriptionCleanup.service');
+        cleanupExpiredPremiumPosts().catch(() => {});
+
         res.status(200).json({ 
             message: `Premium access successfully revoked for user @${user.username}`,
             user 

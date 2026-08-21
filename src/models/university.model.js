@@ -7,10 +7,22 @@ const universitySchema = new mongoose.Schema({
         trim: true,
         unique: true
     },
+    city: {
+        type: String,
+        trim: true,
+        default: ""
+    },
+    state: {
+        type: String,
+        trim: true,
+        default: ""
+    },
     isActive: {
         type: Boolean,
         default: true
     }
 }, { timestamps: true });
+
+universitySchema.index({ name: 1 });
 
 module.exports = mongoose.model("University", universitySchema);

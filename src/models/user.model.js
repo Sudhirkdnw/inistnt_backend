@@ -413,6 +413,12 @@ userSchema.index({ createdAt: -1 }); // Added for analytics
 userSchema.index({ verificationStatus: 1 }); // Added for dashboard queries
 userSchema.index({ isPremium: 1, premiumExpireAt: 1 }); // Added for fast premium checks
 
+// Social Graph & Relationship Performance Indexes
+userSchema.index({ followers: 1 });
+userSchema.index({ following: 1 });
+userSchema.index({ followRequests: 1 });
+userSchema.index({ sentFollowRequests: 1 });
+
 const userModel = mongoose.model("user", userSchema);
 
 module.exports = userModel;

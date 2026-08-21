@@ -7,6 +7,7 @@ const Conversation = require("../models/conversation.model");
 const Message = require("../models/message.model");
 const { uploadAvatar } = require('../utils/cloudinary');
 const { getPremiumSettingsCached } = require("../utils/premiumSettingsCache");
+const { invalidateUserCache } = require("../middlewares/cacheMiddleware");
 const crypto = require("crypto");
 const { sendVerificationEmail } = require("../services/emailService");
 
@@ -15,8 +16,8 @@ async function getUserProfile(req, res) {
     try {
         const user = await userModel.findById(req.params.id)
             .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt isPremium followRequests coverPhoto university department branch semester gradYear skills interests goals github linkedin portfolio resume achievements certifications communitiesJoined photos gender dob pronouns website languages showOnlineStatus hideFromSuggestions isEmailVerified")
-            .populate("followers", "username fullName avatar")
-            .populate("following", "username fullName avatar")
+            .populate("followers", "username fullName avatar isVerified")
+            .populate("following", "username fullName avatar isVerified")
             .lean();
 
         if (!user) {
@@ -26,34 +27,52 @@ async function getUserProfile(req, res) {
         const currentUserId = req.user._id.toString();
         const targetUserId = user._id.toString();
         const isOwner = currentUserId === targetUserId;
-        const isFollowing = user.followers.some(f => f._id.toString() === currentUserId);
-        const isFollower = user.following.some(f => f._id.toString() === currentUserId);
-        const isMutualFollow = isFollowing && isFollower;
 
-        let responseUser = user;
+        const isFollowing = (user.followers || []).some(f => (f._id || f).toString() === currentUserId);
+        const isFollower = (user.following || []).some(f => (f._id || f).toString() === currentUserId);
+        const isMutualFollow = isFollowing && isFollower;
+        const isRequested = (user.followRequests || []).some(f => (f._id || f).toString() === currentUserId);
+
+        const followersCount = (user.followers || []).length;
+        const followingCount = (user.following || []).length;
+
+        let responseUser = {
+            ...user,
+            followersCount,
+            followingCount,
+            isFollowingUser: isFollowing,
+            isFollowerUser: isFollower,
+            isMutualFollow: isMutualFollow,
+            isRequestedUser: isRequested
+        };
 
         // Compute Mutual Connections (users both current user and target user follow)
         let mutualConnections = [];
         if (!isOwner) {
             const currentUserFull = await userModel.findById(req.user._id).select("following").lean();
             const myFollowing = (currentUserFull?.following || []).map(id => id.toString());
-            const theirFollowing = (user.following || []).map(f => f._id.toString());
+            const theirFollowing = (user.following || []).map(f => (f._id || f).toString());
             const mutualIds = myFollowing.filter(id => theirFollowing.includes(id));
             
-            mutualConnections = await userModel.find({ _id: { $in: mutualIds } })
-                .select("username fullName avatar")
-                .limit(10)
-                .lean();
+            if (mutualIds.length > 0) {
+                mutualConnections = await userModel.find({ _id: { $in: mutualIds } })
+                    .select("username fullName avatar isVerified")
+                    .limit(10)
+                    .lean();
+            }
         }
 
         // Compute Friends (mutual followers of the target user)
-        const followerIds = (user.followers || []).map(f => f._id.toString());
-        const followingIds = (user.following || []).map(f => f._id.toString());
+        const followerIds = (user.followers || []).map(f => (f._id || f).toString());
+        const followingIds = (user.following || []).map(f => (f._id || f).toString());
         const mutualFollowIds = followerIds.filter(id => followingIds.includes(id));
-        const friends = await userModel.find({ _id: { $in: mutualFollowIds } })
-            .select("username fullName avatar")
-            .limit(10)
-            .lean();
+        let friends = [];
+        if (mutualFollowIds.length > 0) {
+            friends = await userModel.find({ _id: { $in: mutualFollowIds } })
+                .select("username fullName avatar isVerified")
+                .limit(10)
+                .lean();
+        }
 
         // Query Activity Stats
         const confessionsCount = await Confession.countDocuments({ user: targetUserId, isSoftDeleted: { $ne: true } });
@@ -69,11 +88,12 @@ async function getUserProfile(req, res) {
         responseUser.friends = friends;
         responseUser.mutualConnections = mutualConnections;
 
-        if (responseUser.isPrivate && !isOwner && !isMutualFollow) {
-            // Scrub private data
+        // Privacy Guard: If account is private and viewer is neither owner nor accepted follower
+        if (responseUser.isPrivate && !isOwner && !isFollowing) {
+            // Keep numerical stats visible (standard Instagram UX)
             responseUser.followers = [];
             responseUser.following = [];
-            responseUser.bio = "";
+            responseUser.bio = user.bio || "";
             responseUser.skills = [];
             responseUser.interests = [];
             responseUser.goals = [];
@@ -84,16 +104,15 @@ async function getUserProfile(req, res) {
             responseUser.achievements = [];
             responseUser.certifications = [];
             responseUser.communitiesJoined = [];
-            responseUser.isPrivateHidden = true; // Flag for frontend
-            responseUser.photos = []; // Privacy: Unauthorized users see nothing
+            responseUser.isPrivateHidden = true; // Lock indicator for frontend
+            responseUser.photos = [];
+        } else {
+            responseUser.isPrivateHidden = false;
         }
-
-        responseUser.isFollowingUser = isFollowing;
-        responseUser.isMutualFollow = isMutualFollow;
-        responseUser.isRequestedUser = user.followRequests && user.followRequests.some(f => f.toString() === currentUserId);
 
         res.status(200).json({ user: responseUser });
     } catch (error) {
+        console.error("getUserProfile error:", error);
         res.status(500).json({ message: error.message });
     }
 }
@@ -328,9 +347,9 @@ async function updateAvatar(req, res) {
 async function toggleFollow(req, res) {
     try {
         const targetUserId = req.params.id;
-        const currentUserId = req.user._id;
+        const currentUserId = req.user._id.toString();
 
-        if (targetUserId === currentUserId.toString()) {
+        if (targetUserId === currentUserId) {
             return res.status(400).json({ message: "You cannot follow yourself" });
         }
 
@@ -339,25 +358,125 @@ async function toggleFollow(req, res) {
             return res.status(404).json({ message: "User not found" });
         }
 
-        const isFollowing = targetUser.followers.includes(currentUserId);
-        const isRequested = targetUser.followRequests && targetUser.followRequests.includes(currentUserId);
+        const currentUser = await userModel.findById(currentUserId);
+        if (!currentUser) {
+            return res.status(404).json({ message: "Authenticated user not found" });
+        }
+
+        // Strict string-based ObjectId check to avoid reference mismatch
+        const isFollowing = (targetUser.followers || []).some(id => id.toString() === currentUserId);
+        const isRequested = (targetUser.followRequests || []).some(id => id.toString() === currentUserId);
+        const isFollower = (targetUser.following || []).some(id => id.toString() === currentUserId);
+
+        const io = req.app.get("io");
+        const { sendPushNotificationToUser } = require("../utils/pushNotifications");
 
         if (isFollowing) {
-            // Unfollow
-            await userModel.findByIdAndUpdate(targetUserId, { $pull: { followers: currentUserId } });
-            await userModel.findByIdAndUpdate(currentUserId, { $pull: { following: targetUserId } });
-            res.status(200).json({ message: "Unfollowed successfully", isFollowing: false, isRequested: false });
+            // ── UNFOLLOW FLOW ───────────────────────────────────────────────
+            await Promise.all([
+                userModel.findByIdAndUpdate(targetUserId, { $pull: { followers: currentUserId } }),
+                userModel.findByIdAndUpdate(currentUserId, { $pull: { following: targetUserId } }),
+                // Remove existing follow notification to keep notification inbox pristine
+                notificationModel.deleteMany({
+                    recipient: targetUserId,
+                    sender: currentUserId,
+                    type: { $in: ["follow", "follow_request"] }
+                })
+            ]);
+
+            // Invalidate Redis/In-Memory caches for both users
+            await invalidateUserCache(targetUserId, currentUserId);
+
+            // Fetch latest counts from DB
+            const [freshTarget, freshCurrent] = await Promise.all([
+                userModel.findById(targetUserId).select("followers following"),
+                userModel.findById(currentUserId).select("followers following")
+            ]);
+
+            const targetFollowersCount = (freshTarget?.followers || []).length;
+            const targetFollowingCount = (freshTarget?.following || []).length;
+            const currentFollowersCount = (freshCurrent?.followers || []).length;
+            const currentFollowingCount = (freshCurrent?.following || []).length;
+
+            // Emit real-time socket events for instantaneous cross-device sync
+            if (io) {
+                io.to(String(targetUserId)).emit("follow-updated", {
+                    actorId: currentUserId,
+                    targetUserId: targetUserId,
+                    isFollowing: false,
+                    isRequested: false,
+                    isMutualFollow: false,
+                    followersCount: targetFollowersCount,
+                    followingCount: targetFollowingCount
+                });
+                io.to(String(currentUserId)).emit("follow-updated", {
+                    actorId: currentUserId,
+                    targetUserId: targetUserId,
+                    isFollowing: false,
+                    isRequested: false,
+                    isMutualFollow: false,
+                    followersCount: currentFollowersCount,
+                    followingCount: currentFollowingCount
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: "Unfollowed successfully",
+                isFollowing: false,
+                isRequested: false,
+                isMutualFollow: false,
+                followersCount: targetFollowersCount,
+                followingCount: targetFollowingCount,
+                targetUser: {
+                    _id: targetUserId,
+                    followersCount: targetFollowersCount,
+                    followingCount: targetFollowingCount
+                },
+                currentUser: {
+                    _id: currentUserId,
+                    followersCount: currentFollowersCount,
+                    followingCount: currentFollowingCount
+                }
+            });
         } else if (targetUser.isPrivate) {
+            // ── PRIVATE ACCOUNT FLOW ────────────────────────────────────────
             if (isRequested) {
-                // Cancel request
-                await userModel.findByIdAndUpdate(targetUserId, { $pull: { followRequests: currentUserId } });
-                await userModel.findByIdAndUpdate(currentUserId, { $pull: { sentFollowRequests: targetUserId } });
-                res.status(200).json({ message: "Follow request cancelled", isFollowing: false, isRequested: false });
+                // Cancel pending follow request
+                await Promise.all([
+                    userModel.findByIdAndUpdate(targetUserId, { $pull: { followRequests: currentUserId } }),
+                    userModel.findByIdAndUpdate(currentUserId, { $pull: { sentFollowRequests: targetUserId } }),
+                    notificationModel.deleteMany({
+                        recipient: targetUserId,
+                        sender: currentUserId,
+                        type: "follow_request"
+                    })
+                ]);
+
+                await invalidateUserCache(targetUserId, currentUserId);
+
+                const freshTarget = await userModel.findById(targetUserId).select("followers following");
+                const targetFollowersCount = (freshTarget?.followers || []).length;
+                const targetFollowingCount = (freshTarget?.following || []).length;
+
+                return res.status(200).json({
+                    success: true,
+                    message: "Follow request cancelled",
+                    isFollowing: false,
+                    isRequested: false,
+                    isMutualFollow: false,
+                    followersCount: targetFollowersCount,
+                    followingCount: targetFollowingCount
+                });
             } else {
-                // Send request
-                await userModel.findByIdAndUpdate(targetUserId, { $addToSet: { followRequests: currentUserId } });
-                await userModel.findByIdAndUpdate(currentUserId, { $addToSet: { sentFollowRequests: targetUserId } });
-                
+                // Send follow request
+                await Promise.all([
+                    userModel.findByIdAndUpdate(targetUserId, { $addToSet: { followRequests: currentUserId } }),
+                    userModel.findByIdAndUpdate(currentUserId, { $addToSet: { sentFollowRequests: targetUserId } })
+                ]);
+
+                await invalidateUserCache(targetUserId, currentUserId);
+
                 // Create follow request notification
                 const notif = await notificationModel.create({
                     recipient: targetUserId,
@@ -366,31 +485,49 @@ async function toggleFollow(req, res) {
                     message: `${req.user.username} requested to follow you`
                 });
 
-                // Emit real-time socket notification
-                const io = req.app.get("io");
                 if (io) {
                     const populatedNotif = await notificationModel.findById(notif._id)
-                        .populate("sender", "username fullName avatar");
+                        .populate("sender", "username fullName avatar isVerified");
                     io.to(String(targetUserId)).emit("new-notification", populatedNotif);
                 }
 
-                // Send push notification
-                const { sendPushNotificationToUser } = require("../utils/pushNotifications");
                 sendPushNotificationToUser(
                     targetUserId,
                     "Follow Request",
-                    `${req.user.username} requested to follow you`,
-                    { type: "follow_request", userId: currentUserId.toString() }
+                    `@${req.user.username} requested to follow you`,
+                    { type: "follow_request", userId: currentUserId }
                 );
 
-                res.status(200).json({ message: "Follow requested", isFollowing: false, isRequested: true });
+                const freshTarget = await userModel.findById(targetUserId).select("followers following");
+                const targetFollowersCount = (freshTarget?.followers || []).length;
+                const targetFollowingCount = (freshTarget?.following || []).length;
+
+                return res.status(200).json({
+                    success: true,
+                    message: "Follow requested",
+                    isFollowing: false,
+                    isRequested: true,
+                    isMutualFollow: false,
+                    followersCount: targetFollowersCount,
+                    followingCount: targetFollowingCount
+                });
             }
         } else {
-            // Follow public account
-            await userModel.findByIdAndUpdate(targetUserId, { $addToSet: { followers: currentUserId } });
-            await userModel.findByIdAndUpdate(currentUserId, { $addToSet: { following: targetUserId } });
+            // ── PUBLIC ACCOUNT FOLLOW FLOW ──────────────────────────────────
+            await Promise.all([
+                userModel.findByIdAndUpdate(targetUserId, { $addToSet: { followers: currentUserId } }),
+                userModel.findByIdAndUpdate(currentUserId, { $addToSet: { following: targetUserId } })
+            ]);
 
-            // Create notification
+            await invalidateUserCache(targetUserId, currentUserId);
+
+            // Clean up old notifications and create fresh follow notification
+            await notificationModel.deleteMany({
+                recipient: targetUserId,
+                sender: currentUserId,
+                type: "follow"
+            });
+
             const notif = await notificationModel.create({
                 recipient: targetUserId,
                 sender: currentUserId,
@@ -398,121 +535,361 @@ async function toggleFollow(req, res) {
                 message: `${req.user.username} started following you`
             });
 
-            // Emit real-time socket notification to target user
-            const io = req.app.get("io");
+            const [freshTarget, freshCurrent] = await Promise.all([
+                userModel.findById(targetUserId).select("followers following"),
+                userModel.findById(currentUserId).select("followers following")
+            ]);
+
+            const targetFollowersCount = (freshTarget?.followers || []).length;
+            const targetFollowingCount = (freshTarget?.following || []).length;
+            const currentFollowersCount = (freshCurrent?.followers || []).length;
+            const currentFollowingCount = (freshCurrent?.following || []).length;
+            const isMutualFollow = isFollower;
+
             if (io) {
                 const populatedNotif = await notificationModel.findById(notif._id)
-                    .populate("sender", "username fullName avatar");
+                    .populate("sender", "username fullName avatar isVerified");
+                
                 io.to(String(targetUserId)).emit("new-notification", populatedNotif);
+                
+                io.to(String(targetUserId)).emit("follow-updated", {
+                    actorId: currentUserId,
+                    targetUserId: targetUserId,
+                    isFollowing: true,
+                    isRequested: false,
+                    isMutualFollow,
+                    followersCount: targetFollowersCount,
+                    followingCount: targetFollowingCount
+                });
+
+                io.to(String(currentUserId)).emit("follow-updated", {
+                    actorId: currentUserId,
+                    targetUserId: targetUserId,
+                    isFollowing: true,
+                    isRequested: false,
+                    isMutualFollow,
+                    followersCount: currentFollowersCount,
+                    followingCount: currentFollowingCount
+                });
             }
 
-            // Send push notification
-            const { sendPushNotificationToUser } = require("../utils/pushNotifications");
             sendPushNotificationToUser(
                 targetUserId,
                 "New Follower",
-                `${req.user.username} started following you`,
-                { type: "follow", userId: currentUserId.toString() }
+                `@${req.user.username} started following you`,
+                { type: "follow", userId: currentUserId }
             );
 
-            res.status(200).json({ message: "Followed successfully", isFollowing: true, isRequested: false });
+            return res.status(200).json({
+                success: true,
+                message: "Followed successfully",
+                isFollowing: true,
+                isRequested: false,
+                isMutualFollow,
+                followersCount: targetFollowersCount,
+                followingCount: targetFollowingCount,
+                targetUser: {
+                    _id: targetUserId,
+                    followersCount: targetFollowersCount,
+                    followingCount: targetFollowingCount
+                },
+                currentUser: {
+                    _id: currentUserId,
+                    followersCount: currentFollowersCount,
+                    followingCount: currentFollowingCount
+                }
+            });
         }
     } catch (error) {
+        console.error("toggleFollow error:", error);
         res.status(500).json({ message: error.message });
     }
 }
 
-// GET /api/users/:id/followers
+// POST /api/users/:id/follow-request/accept — Accept follow request
+async function acceptFollowRequest(req, res) {
+    try {
+        const requesterId = req.params.id; // The user who sent the follow request
+        const currentUserId = req.user._id.toString(); // The recipient user accepting the request
+
+        const currentUser = await userModel.findById(currentUserId);
+        const requester = await userModel.findById(requesterId);
+
+        if (!currentUser || !requester) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Pull from request queues, add to followers/following
+        await Promise.all([
+            userModel.findByIdAndUpdate(currentUserId, {
+                $pull: { followRequests: requesterId },
+                $addToSet: { followers: requesterId }
+            }),
+            userModel.findByIdAndUpdate(requesterId, {
+                $pull: { sentFollowRequests: currentUserId },
+                $addToSet: { following: currentUserId }
+            }),
+            // Mark follow_request notification as accepted / remove it
+            notificationModel.deleteMany({
+                recipient: currentUserId,
+                sender: requesterId,
+                type: "follow_request"
+            })
+        ]);
+
+        await invalidateUserCache(currentUserId, requesterId);
+
+        // Notify requester that their follow request was accepted
+        const notif = await notificationModel.create({
+            recipient: requesterId,
+            sender: currentUserId,
+            type: "follow",
+            message: `${req.user.username} accepted your follow request`
+        });
+
+        const io = req.app.get("io");
+        if (io) {
+            const populatedNotif = await notificationModel.findById(notif._id)
+                .populate("sender", "username fullName avatar isVerified");
+            io.to(String(requesterId)).emit("new-notification", populatedNotif);
+
+            io.to(String(requesterId)).emit("follow-updated", {
+                actorId: currentUserId,
+                targetUserId: currentUserId,
+                isFollowing: true,
+                isRequested: false
+            });
+        }
+
+        const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+        sendPushNotificationToUser(
+            requesterId,
+            "Follow Request Accepted",
+            `@${req.user.username} accepted your follow request`,
+            { type: "follow_accepted", userId: currentUserId }
+        );
+
+        const freshCurrent = await userModel.findById(currentUserId).select("followers following");
+
+        res.status(200).json({
+            success: true,
+            message: "Follow request accepted",
+            followersCount: (freshCurrent?.followers || []).length,
+            followingCount: (freshCurrent?.following || []).length
+        });
+    } catch (error) {
+        console.error("acceptFollowRequest error:", error);
+        res.status(500).json({ message: error.message });
+    }
+}
+
+// POST /api/users/:id/follow-request/decline — Decline follow request
+async function declineFollowRequest(req, res) {
+    try {
+        const requesterId = req.params.id;
+        const currentUserId = req.user._id.toString();
+
+        await Promise.all([
+            userModel.findByIdAndUpdate(currentUserId, { $pull: { followRequests: requesterId } }),
+            userModel.findByIdAndUpdate(requesterId, { $pull: { sentFollowRequests: currentUserId } }),
+            notificationModel.deleteMany({
+                recipient: currentUserId,
+                sender: requesterId,
+                type: "follow_request"
+            })
+        ]);
+
+        await invalidateUserCache(currentUserId, requesterId);
+
+        res.status(200).json({ success: true, message: "Follow request declined" });
+    } catch (error) {
+        console.error("declineFollowRequest error:", error);
+        res.status(500).json({ message: error.message });
+    }
+}
+
+// GET /api/users/:id/followers — Rich Instagram-grade Followers Directory
 async function getFollowers(req, res) {
     try {
-        const user = await userModel.findById(req.params.id);
+        const targetUserId = req.params.id;
+        const currentUserId = req.user._id.toString();
 
-        if (!user) {
+        const targetUser = await userModel.findById(targetUserId)
+            .select("username isPrivate followers following")
+            .lean();
+
+        if (!targetUser) {
             return res.status(404).json({ message: "User not found" });
         }
 
-        const isOwner = user._id.toString() === req.user._id.toString();
-        const isFollowing = user.followers.includes(req.user._id);
+        const isOwner = targetUser._id.toString() === currentUserId;
+        const isFollowing = (targetUser.followers || []).some(id => id.toString() === currentUserId);
 
-        if (user.isPrivate && !isOwner && !isFollowing) {
+        if (targetUser.isPrivate && !isOwner && !isFollowing) {
             return res.status(403).json({ message: "This follow list is private" });
         }
 
-        const query = req.query.q || "";
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
+        const followerIds = targetUser.followers || [];
+        const query = (req.query.q || "").trim();
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
         const skip = (page - 1) * limit;
 
-        const matchObj = { _id: { $in: user.followers || [] } };
+        let matchFilter = { _id: { $in: followerIds }, isSoftDeleted: { $ne: true }, isBanned: { $ne: true } };
+
         if (query) {
-            // Use text search if available, fallback to regex for partials if needed
-            // But for enterprise scale, text index is preferred
-            matchObj.$text = { $search: query };
+            const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const searchRegex = new RegExp(escaped, "i");
+            matchFilter.$or = [
+                { username: searchRegex },
+                { fullName: searchRegex },
+                { collegeName: searchRegex }
+            ];
         }
 
-        const followers = await userModel.find(matchObj)
-            .select("username fullName avatar")
-            .skip(skip)
-            .limit(limit)
-            .lean();
+        const [totalCount, rawFollowers, currentUser] = await Promise.all([
+            userModel.countDocuments(matchFilter),
+            userModel.find(matchFilter)
+                .select("username fullName avatar isVerified isPrivate collegeName followers following followRequests")
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            userModel.findById(currentUserId).select("following followers sentFollowRequests").lean()
+        ]);
 
-        // Optimized following check: use a single aggregation or a quick find
-        const currentUser = await userModel.findById(req.user._id).select("following").lean();
-        const followingSet = new Set((currentUser.following || []).map(id => id.toString()));
+        const currentUserFollowingSet = new Set((currentUser?.following || []).map(id => id.toString()));
+        const currentUserFollowersSet = new Set((currentUser?.followers || []).map(id => id.toString()));
+        const currentUserSentRequestsSet = new Set((currentUser?.sentFollowRequests || []).map(id => id.toString()));
 
-        const enrichedFollowers = followers.map(u => ({
-            ...u,
-            _isFollowing: followingSet.has(u._id.toString())
-        }));
+        const enrichedFollowers = rawFollowers.map(u => {
+            const uId = u._id.toString();
+            const isSelf = uId === currentUserId;
+            const viewerFollowsUser = currentUserFollowingSet.has(uId);
+            const userFollowsViewer = currentUserFollowersSet.has(uId);
+            const isPendingRequest = currentUserSentRequestsSet.has(uId);
 
-        res.status(200).json({ followers: enrichedFollowers, page, limit, hasMore: followers.length === limit });
+            return {
+                _id: u._id,
+                username: u.username,
+                fullName: u.fullName || "",
+                avatar: u.avatar || "",
+                collegeName: u.collegeName || "",
+                isVerified: !!u.isVerified,
+                isPrivate: !!u.isPrivate,
+                followersCount: (u.followers || []).length,
+                followingCount: (u.following || []).length,
+                _isSelf: isSelf,
+                _isFollowing: viewerFollowsUser,
+                _isFollower: userFollowsViewer,
+                _isRequested: isPendingRequest,
+                _canFollowBack: userFollowsViewer && !viewerFollowsUser && !isSelf
+            };
+        });
+
+        res.status(200).json({
+            success: true,
+            followers: enrichedFollowers,
+            page,
+            limit,
+            totalCount,
+            totalPages: Math.ceil(totalCount / limit),
+            hasMore: skip + rawFollowers.length < totalCount
+        });
     } catch (error) {
+        console.error("getFollowers error:", error);
         res.status(500).json({ message: error.message });
     }
 }
 
-// GET /api/users/:id/following
+// GET /api/users/:id/following — Rich Instagram-grade Following Directory
 async function getFollowing(req, res) {
     try {
-        const user = await userModel.findById(req.params.id);
+        const targetUserId = req.params.id;
+        const currentUserId = req.user._id.toString();
 
-        if (!user) {
+        const targetUser = await userModel.findById(targetUserId)
+            .select("username isPrivate followers following")
+            .lean();
+
+        if (!targetUser) {
             return res.status(404).json({ message: "User not found" });
         }
 
-        const isOwner = user._id.toString() === req.user._id.toString();
-        const isFollowing = user.followers.includes(req.user._id);
+        const isOwner = targetUser._id.toString() === currentUserId;
+        const isFollowing = (targetUser.followers || []).some(id => id.toString() === currentUserId);
 
-        if (user.isPrivate && !isOwner && !isFollowing) {
+        if (targetUser.isPrivate && !isOwner && !isFollowing) {
             return res.status(403).json({ message: "This follow list is private" });
         }
 
-        const query = req.query.q || "";
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
+        const followingIds = targetUser.following || [];
+        const query = (req.query.q || "").trim();
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
         const skip = (page - 1) * limit;
 
-        const matchObj = { _id: { $in: user.following || [] } };
+        let matchFilter = { _id: { $in: followingIds }, isSoftDeleted: { $ne: true }, isBanned: { $ne: true } };
+
         if (query) {
-            matchObj.$text = { $search: query };
+            const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const searchRegex = new RegExp(escaped, "i");
+            matchFilter.$or = [
+                { username: searchRegex },
+                { fullName: searchRegex },
+                { collegeName: searchRegex }
+            ];
         }
 
-        const followingList = await userModel.find(matchObj)
-            .select("username fullName avatar")
-            .skip(skip)
-            .limit(limit)
-            .lean();
+        const [totalCount, rawFollowing, currentUser] = await Promise.all([
+            userModel.countDocuments(matchFilter),
+            userModel.find(matchFilter)
+                .select("username fullName avatar isVerified isPrivate collegeName followers following followRequests")
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            userModel.findById(currentUserId).select("following followers sentFollowRequests").lean()
+        ]);
 
-        const currentUser = await userModel.findById(req.user._id).select("following").lean();
-        const followingSet = new Set((currentUser.following || []).map(id => id.toString()));
+        const currentUserFollowingSet = new Set((currentUser?.following || []).map(id => id.toString()));
+        const currentUserFollowersSet = new Set((currentUser?.followers || []).map(id => id.toString()));
+        const currentUserSentRequestsSet = new Set((currentUser?.sentFollowRequests || []).map(id => id.toString()));
 
-        const enrichedFollowing = followingList.map(u => ({
-            ...u,
-            _isFollowing: followingSet.has(u._id.toString())
-        }));
+        const enrichedFollowing = rawFollowing.map(u => {
+            const uId = u._id.toString();
+            const isSelf = uId === currentUserId;
+            const viewerFollowsUser = currentUserFollowingSet.has(uId);
+            const userFollowsViewer = currentUserFollowersSet.has(uId);
+            const isPendingRequest = currentUserSentRequestsSet.has(uId);
 
-        res.status(200).json({ following: enrichedFollowing, page, limit, hasMore: followingList.length === limit });
+            return {
+                _id: u._id,
+                username: u.username,
+                fullName: u.fullName || "",
+                avatar: u.avatar || "",
+                collegeName: u.collegeName || "",
+                isVerified: !!u.isVerified,
+                isPrivate: !!u.isPrivate,
+                followersCount: (u.followers || []).length,
+                followingCount: (u.following || []).length,
+                _isSelf: isSelf,
+                _isFollowing: viewerFollowsUser,
+                _isFollower: userFollowsViewer,
+                _isRequested: isPendingRequest,
+                _canFollowBack: userFollowsViewer && !viewerFollowsUser && !isSelf
+            };
+        });
+
+        res.status(200).json({
+            success: true,
+            following: enrichedFollowing,
+            page,
+            limit,
+            totalCount,
+            totalPages: Math.ceil(totalCount / limit),
+            hasMore: skip + rawFollowing.length < totalCount
+        });
     } catch (error) {
+        console.error("getFollowing error:", error);
         res.status(500).json({ message: error.message });
     }
 }
@@ -963,23 +1340,101 @@ async function savePushToken(req, res) {
     }
 }
 
-// PUT /api/users/cover — Update cover photo
+// PUT /api/users/avatar — Update profile avatar with automatic old image deletion
+async function updateAvatar(req, res) {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: "No avatar image provided" });
+        }
+        const { uploadAvatar, deleteImage } = require("../utils/cloudinary");
+        const sharp = require("sharp");
+
+        let processedBuffer = req.file.buffer;
+        try {
+            processedBuffer = await sharp(req.file.buffer)
+                .resize({ width: 400, height: 400, fit: 'cover' })
+                .jpeg({ quality: 85, progressive: true })
+                .toBuffer();
+        } catch (sharpErr) {
+            console.warn("Sharp avatar compression skipped:", sharpErr.message);
+        }
+
+        const avatarUrl = await uploadAvatar(processedBuffer, "image/jpeg");
+
+        const user = await userModel.findById(req.user._id);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        // Delete old avatar from Cloudinary if different
+        const oldAvatar = user.avatar;
+        if (oldAvatar && oldAvatar !== avatarUrl && oldAvatar.includes("cloudinary.com")) {
+            deleteImage(oldAvatar).catch((e) => console.warn("Failed to delete old avatar:", e.message));
+        }
+
+        user.avatar = avatarUrl;
+        if (Array.isArray(user.photos) && user.photos.length > 0) {
+            user.photos[0] = avatarUrl;
+        } else {
+            user.photos = [avatarUrl];
+        }
+        await user.save();
+
+        const { invalidateUserCache } = require("../middlewares/cacheMiddleware");
+        invalidateUserCache(req.user._id);
+
+        res.status(200).json({
+            message: "Avatar updated successfully",
+            avatar: avatarUrl,
+            photos: user.photos,
+            user
+        });
+    } catch (err) {
+        console.error("updateAvatar error:", err);
+        res.status(500).json({ message: err.message });
+    }
+}
+
+// PUT /api/users/cover — Update cover photo with automatic old image deletion
 async function updateCover(req, res) {
     try {
         if (!req.file) {
             return res.status(400).json({ message: "No image provided" });
         }
-        const { uploadImage } = require("../utils/cloudinary");
-        const mimetype = req.file.mimetype || "";
-        const coverPhotoUrl = await uploadImage(req.file.buffer, {
-            folder: "hykee/covers"
-        }, mimetype);
+        const { uploadImage, deleteImage } = require("../utils/cloudinary");
+        const sharp = require("sharp");
+
+        // High-speed Sharp buffer compression for mobile performance
+        let processedBuffer = req.file.buffer;
+        try {
+            processedBuffer = await sharp(req.file.buffer)
+                .resize({ width: 1200, height: 600, fit: 'inside', withoutEnlargement: true })
+                .jpeg({ quality: 80, progressive: true })
+                .toBuffer();
+        } catch (sharpErr) {
+            console.warn("Sharp cover compression skipped:", sharpErr.message);
+        }
+
+        const coverPhotoUrl = await uploadImage(processedBuffer, {
+            folder: "hykee/covers",
+            quality: "auto:good",
+            fetch_format: "auto"
+        }, "image/jpeg");
+
+        const oldUser = await userModel.findById(req.user._id).select("coverPhoto");
+        const oldCover = oldUser?.coverPhoto;
 
         const user = await userModel.findByIdAndUpdate(
             req.user._id,
             { coverPhoto: coverPhotoUrl },
             { returnDocument: 'after' }
         ).select("coverPhoto");
+
+        // Automatically delete previous cover photo from Cloudinary
+        if (oldCover && oldCover !== coverPhotoUrl && oldCover.includes("cloudinary.com")) {
+            deleteImage(oldCover).catch((e) => console.warn("Failed to delete old cover:", e.message));
+        }
+
+        const { invalidateUserCache } = require("../middlewares/cacheMiddleware");
+        invalidateUserCache(req.user._id);
 
         res.status(200).json({ message: "Cover photo updated successfully", coverPhoto: coverPhotoUrl, user });
     } catch (err) {
@@ -1041,6 +1496,9 @@ async function uploadUserPhoto(req, res) {
         }
         await user.save();
 
+        const { invalidateUserCache } = require("../middlewares/cacheMiddleware");
+        invalidateUserCache(req.user._id);
+
         res.status(200).json({ message: "Photo uploaded successfully", photoUrl, photos: user.photos, avatar: user.avatar });
     } catch (err) {
         console.error("uploadUserPhoto error:", err);
@@ -1063,7 +1521,9 @@ async function deleteUserPhoto(req, res) {
         }
 
         const { deleteImage } = require("../utils/cloudinary");
-        await deleteImage(photoUrl);
+        if (photoUrl.includes("cloudinary.com")) {
+            await deleteImage(photoUrl).catch((e) => console.warn("Failed to delete Cloudinary photo:", e.message));
+        }
 
         user.photos = user.photos.filter(p => p !== photoUrl);
 
@@ -1071,6 +1531,9 @@ async function deleteUserPhoto(req, res) {
             user.avatar = user.photos[0] || "";
         }
         await user.save();
+
+        const { invalidateUserCache } = require("../middlewares/cacheMiddleware");
+        invalidateUserCache(req.user._id);
 
         res.status(200).json({ message: "Photo deleted successfully", photos: user.photos, avatar: user.avatar });
     } catch (err) {
@@ -1097,6 +1560,9 @@ async function reorderUserPhotos(req, res) {
         user.photos = photos;
         user.avatar = photos[0] || "";
         await user.save();
+
+        const { invalidateUserCache } = require("../middlewares/cacheMiddleware");
+        invalidateUserCache(req.user._id);
 
         res.status(200).json({ message: "Photos reordered successfully", photos: user.photos, avatar: user.avatar });
     } catch (err) {

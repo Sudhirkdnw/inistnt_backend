@@ -4,12 +4,19 @@ const collegeSchema = new mongoose.Schema({
     name: {
         type: String,
         required: true,
-        trim: true
+        trim: true,
+        unique: true
     },
     university: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "University",
-        required: true
+        required: false,
+        default: null
+    },
+    code: {
+        type: String,
+        trim: true,
+        default: ""
     },
     city: {
         type: String,
@@ -27,6 +34,6 @@ const collegeSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
-collegeSchema.index({ university: 1, name: 1 }, { unique: true });
+collegeSchema.index({ name: 1 });
 
 module.exports = mongoose.model("College", collegeSchema);

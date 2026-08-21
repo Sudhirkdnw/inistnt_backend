@@ -327,6 +327,10 @@ const startServer = async () => {
         }
     }
 
+    // Start automated background subscription and photo purge worker
+    const { startSubscriptionCleanupWorker } = require("./src/services/subscriptionCleanup.service");
+    startSubscriptionCleanupWorker();
+
     server.listen(PORT, () => {
         InfrastructureLogger.server("SUCCESS", `Hykee Enterprise Node Server is listening on port ${PORT} (Enterprise Cluster Mode)`);
     });

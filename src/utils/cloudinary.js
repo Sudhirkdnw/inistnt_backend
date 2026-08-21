@@ -119,44 +119,92 @@ const uploadDatingPhoto = async (buffer, mimetype) => {
 };
 
 /**
- * Delete an image from Cloudinary by its public_id.
+ * Upload confession photo media with full result payload (url, publicId, dimensions).
  */
-const deleteImage = async (imageUrl) => {
-    if (!isConfigured() || !imageUrl || imageUrl.startsWith('data:')) return;
+const uploadConfessionMedia = async (buffer, mimetype) => {
+    if (!isConfigured()) {
+        if (Buffer.isBuffer(buffer)) {
+            const mime = mimetype || 'image/jpeg';
+            return { url: `data:${mime};base64,${buffer.toString('base64')}`, publicId: '', width: 0, height: 0 };
+        }
+        return { url: buffer, publicId: '', width: 0, height: 0 };
+    }
+
+    const uploadOptions = {
+        folder: 'hykee/confessions',
+        resource_type: 'image',
+        quality: 'auto:good',
+        fetch_format: 'auto',
+        transformation: [{ width: 1440, crop: 'limit' }],
+    };
+
+    if (Buffer.isBuffer(buffer)) {
+        return await new Promise((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
+                if (error) return reject(error);
+                resolve({
+                    url: result.secure_url,
+                    publicId: result.public_id,
+                    width: result.width || 0,
+                    height: result.height || 0
+                });
+            });
+            stream.end(buffer);
+        });
+    }
+
+    const result = await cloudinary.uploader.upload(buffer, uploadOptions);
+    return {
+        url: result.secure_url,
+        publicId: result.public_id,
+        width: result.width || 0,
+        height: result.height || 0
+    };
+};
+
+/**
+ * Delete an image from Cloudinary by its public_id or image URL.
+ */
+const deleteImage = async (imageUrlOrPublicId) => {
+    if (!isConfigured() || !imageUrlOrPublicId) return;
     try {
-        const uploadIndex = imageUrl.indexOf('/upload/');
-        if (uploadIndex === -1) return;
-        
-        const afterUpload = imageUrl.substring(uploadIndex + 8);
-        const parts = afterUpload.split('/');
-        
-        let startIdx = 0;
-        while (startIdx < parts.length) {
-            const part = parts[startIdx];
-            if (part.startsWith('v') && /^\d+$/.test(part.substring(1))) {
-                startIdx++;
-                break;
-            } else if (part.includes('_') || part.includes(',')) {
-                startIdx++;
-            } else {
-                break;
+        let publicId = imageUrlOrPublicId;
+        if (imageUrlOrPublicId.includes('/upload/')) {
+            const uploadIndex = imageUrlOrPublicId.indexOf('/upload/');
+            const afterUpload = imageUrlOrPublicId.substring(uploadIndex + 8);
+            const parts = afterUpload.split('/');
+            
+            let startIdx = 0;
+            while (startIdx < parts.length) {
+                const part = parts[startIdx];
+                if (part.startsWith('v') && /^\d+$/.test(part.substring(1))) {
+                    startIdx++;
+                    break;
+                } else if (part.includes('_') || part.includes(',')) {
+                    startIdx++;
+                } else {
+                    break;
+                }
             }
+            
+            const pathSegments = parts.slice(startIdx);
+            if (pathSegments.length === 0) return;
+            
+            const lastSegment = pathSegments[pathSegments.length - 1];
+            const dotIdx = lastSegment.lastIndexOf('.');
+            if (dotIdx !== -1) {
+                pathSegments[pathSegments.length - 1] = lastSegment.substring(0, dotIdx);
+            }
+            
+            publicId = pathSegments.join('/');
         }
-        
-        const pathSegments = parts.slice(startIdx);
-        if (pathSegments.length === 0) return;
-        
-        const lastSegment = pathSegments[pathSegments.length - 1];
-        const dotIdx = lastSegment.lastIndexOf('.');
-        if (dotIdx !== -1) {
-            pathSegments[pathSegments.length - 1] = lastSegment.substring(0, dotIdx);
+
+        if (publicId) {
+            await cloudinary.uploader.destroy(publicId);
         }
-        
-        const publicId = pathSegments.join('/');
-        await cloudinary.uploader.destroy(publicId);
     } catch (err) {
         console.error("Cloudinary delete image failed:", err.message);
     }
 };
 
-module.exports = { uploadImage, uploadAvatar, uploadDatingPhoto, getThumbnail, deleteImage, isConfigured };
+module.exports = { uploadImage, uploadAvatar, uploadDatingPhoto, uploadConfessionMedia, getThumbnail, deleteImage, isConfigured };

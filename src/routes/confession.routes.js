@@ -1,7 +1,11 @@
 const express = require('express');
 const { authMiddleware } = require('../middlewares/authmiddleware');
 const cacheMiddleware = require('../middlewares/cacheMiddleware');
-const router = express.Router();
+const multer = require('multer');
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 15 * 1024 * 1024 } // 15MB max per image
+});
 
 const {
     createConfession, getFeed, getExplore, getHotPosts, getConfession,
@@ -10,7 +14,7 @@ const {
     reportConfession, getUserConfessions, votePollOption
 } = require("../controllers/confession.controller");
 
-router.post('/', authMiddleware, createConfession);
+router.post('/', authMiddleware, upload.array('photos', 6), createConfession);
 router.get('/feed', authMiddleware, cacheMiddleware(30), getFeed);
 router.get('/explore', authMiddleware, getExplore); // internal cache is used here
 router.get('/hot', authMiddleware, getHotPosts);    // global hot/trending — no college filter

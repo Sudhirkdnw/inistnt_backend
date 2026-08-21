@@ -5,10 +5,23 @@ const reportModel = require('../models/report.model');
 const cache = require('../service/cache.service');
 const userModel = require('../models/user.model');
 
-// POST /api/confessions — Create confession
+// POST /api/confessions — Create confession (Text or Premium Photo)
 const createConfession = async (req, res) => {
     try {
-        const { confessionText, category, isAnonymous, pollOptions } = req.body;
+        let { confessionText, category, isAnonymous, pollOptions } = req.body;
+
+        // Parse pollOptions if sent as stringified JSON via FormData
+        if (typeof pollOptions === 'string') {
+            try {
+                pollOptions = JSON.parse(pollOptions);
+            } catch (e) {
+                pollOptions = null;
+            }
+        }
+
+        if (typeof isAnonymous === 'string') {
+            isAnonymous = isAnonymous === 'true';
+        }
 
         const { containsPhoneNumber } = require('../utils/phoneFilter');
         if (confessionText && containsPhoneNumber(confessionText)) {
@@ -34,6 +47,56 @@ const createConfession = async (req, res) => {
         // Check Approval Mode
         const isHidden = getSetting('confession_approval_mode', false);
 
+        // ── Premium Photo Validation & Processing ────────────────────────────
+        const uploadedFiles = req.files || (req.file ? [req.file] : []);
+        const hasPhotos = uploadedFiles.length > 0;
+        let mediaList = [];
+
+        if (hasPhotos) {
+            // Strict Backend Premium Check
+            const now = new Date();
+            const isPremium = req.user.role === "admin" || (req.user.isPremium && req.user.premiumExpireAt && new Date(req.user.premiumExpireAt) > now);
+
+            if (!isPremium) {
+                return res.status(403).json({
+                    message: "Photo Confessions are available exclusively with an active Hykee Premium subscription.",
+                    requiresPremium: true
+                });
+            }
+
+            if (uploadedFiles.length > 6) {
+                return res.status(400).json({ message: "Maximum 6 photos allowed per confession" });
+            }
+
+            const { uploadConfessionMedia } = require("../utils/cloudinary");
+            const sharp = require("sharp");
+
+            for (const file of uploadedFiles) {
+                // Validate mime type
+                if (!file.mimetype || !file.mimetype.startsWith('image/')) {
+                    return res.status(400).json({ message: "Only image files (JPEG, PNG, WEBP) are supported." });
+                }
+
+                let processedBuffer = file.buffer;
+                try {
+                    processedBuffer = await sharp(file.buffer)
+                        .resize({ width: 1440, height: 1440, fit: 'inside', withoutEnlargement: true })
+                        .jpeg({ quality: 82, progressive: true })
+                        .toBuffer();
+                } catch (sharpErr) {
+                    console.warn("Sharp confession compression skipped:", sharpErr.message);
+                }
+
+                const uploaded = await uploadConfessionMedia(processedBuffer, "image/jpeg");
+                mediaList.push({
+                    url: uploaded.url,
+                    publicId: uploaded.publicId,
+                    width: uploaded.width,
+                    height: uploaded.height
+                });
+            }
+        }
+
         let poll = null;
         if (pollOptions) {
             if (!Array.isArray(pollOptions)) {
@@ -56,6 +119,7 @@ const createConfession = async (req, res) => {
             };
         }
 
+        const isPhotoPost = mediaList.length > 0;
         const confession = await confessionModel.create({
             confessionText: confessionText.trim(),
             category: category || "secret",
@@ -63,6 +127,11 @@ const createConfession = async (req, res) => {
             isAnonymous: finalIsAnonymous,
             isHidden: isHidden,
             collegeName: req.user.collegeName || "",
+            postType: isPhotoPost ? "PHOTO" : "TEXT",
+            media: mediaList,
+            isPremiumPost: isPhotoPost,
+            mediaStatus: isPhotoPost ? "ACTIVE" : "EXPIRED",
+            mediaExpireAt: isPhotoPost ? req.user.premiumExpireAt : null,
             ...(poll && { poll })
         });
 
@@ -96,6 +165,7 @@ const createConfession = async (req, res) => {
             isPending: isHidden
         });
     } catch (error) {
+        console.error("createConfession error:", error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -126,7 +196,7 @@ const getFeed = async (req, res) => {
         if (cursor) filter._id = { $lt: cursor };
 
         const confessions = await confessionModel.find(filter)
-            .select('confessionText category user isAnonymous likes commentCount poll collegeName createdAt')
+            .select('confessionText category user isAnonymous likes commentCount poll collegeName createdAt postType media isPremiumPost mediaStatus mediaExpireAt')
             .populate("user", "username fullName avatar isPrivate collegeName")
             .sort({ _id: -1 })
             .limit(limit)
@@ -162,7 +232,7 @@ const getExplore = async (req, res) => {
             if (cursor) filter._id = { $lt: cursor };
 
             const confessions = await confessionModel.find(filter)
-                .select('confessionText category user isAnonymous likes commentCount poll createdAt')
+                .select('confessionText category user isAnonymous likes commentCount poll createdAt postType media isPremiumPost mediaStatus mediaExpireAt')
                 .populate("user", "username fullName avatar")
                 .sort({ _id: -1 })
                 .limit(limit)
@@ -195,7 +265,7 @@ const getExplore = async (req, res) => {
 const getConfession = async (req, res) => {
     try {
         const confession = await confessionModel.findById(req.params.id)
-            .select("confessionText category user isAnonymous likes commentCount isHidden isLocked isPinned isNSFW poll createdAt")
+            .select("confessionText category user isAnonymous likes commentCount isHidden isLocked isPinned isNSFW poll createdAt postType media isPremiumPost mediaStatus mediaExpireAt")
             .populate("user", "username fullName avatar isPrivate followers")
             .populate("likes", "username fullName avatar")
             .lean();
@@ -807,7 +877,17 @@ function sanitizeConfession(confession, currentUserId) {
     obj.isLikedByMe = currentUserId
         ? likesArr.some(id => id?.toString() === currentUserId?.toString())
         : false;
-    delete obj.likes; // Remove the potentially huge array
+    // ── Photo Confession Media Sanitization ────────────────────────────────
+    if (obj.postType === 'PHOTO' && obj.mediaStatus === 'ACTIVE' && Array.isArray(obj.media) && obj.media.length > 0) {
+        obj.media = obj.media.map(m => ({
+            url: m.url,
+            width: m.width || 0,
+            height: m.height || 0
+        }));
+    } else {
+        obj.media = [];
+        obj.postType = 'TEXT';
+    }
 
     if (obj.poll && obj.poll.options && obj.poll.options.length > 0) {
         const totalVotes = obj.poll.options.reduce((sum, opt) => sum + (opt.votes ? opt.votes.length : 0), 0);

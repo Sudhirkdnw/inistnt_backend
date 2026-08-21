@@ -63,4 +63,35 @@ const cacheMiddleware = (durationInSeconds = 60) => {
     };
 };
 
+/**
+ * Invalidate cache keys matching one or more patterns or user IDs
+ */
+async function invalidateUserCache(...userIds) {
+    if (!redisClient) return;
+    try {
+        for (const uid of userIds) {
+            if (!uid) continue;
+            const strId = String(uid);
+            // Search keys prefixed with user ID or containing the route /users/:id
+            const patterns = [
+                `cache:${strId}:*`,
+                `cache:*${strId}*`,
+                `cache:*:*/api/users/${strId}*`,
+                `cache:*:*/api/users/suggestions*`,
+                `cache:*:*/api/users/search*`
+            ];
+            for (const pattern of patterns) {
+                const keys = await redisClient.keys(pattern);
+                if (keys && keys.length > 0) {
+                    await redisClient.del(...keys);
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("⚠️ Cache invalidation error (graceful skip):", e.message);
+    }
+}
+
 module.exports = cacheMiddleware;
+module.exports.cacheMiddleware = cacheMiddleware;
+module.exports.invalidateUserCache = invalidateUserCache;

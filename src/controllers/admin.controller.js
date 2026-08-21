@@ -298,11 +298,16 @@ const getAllConfessions = async (req, res) => {
                 { commentCount: { $gte: 5 } },
                 { "likes.4": { $exists: true } }
             ];
+        } else if (filter === 'photos') {
+            query.postType = 'PHOTO';
+            query.mediaStatus = 'ACTIVE';
+        } else if (filter === 'expired') {
+            query.mediaStatus = 'EXPIRED';
         }
 
         const confessions = await confessionModel.find(query)
-            .select("confessionText category isAnonymous collegeName likes commentCount isHidden createdAt user")
-            .populate("user", "username avatar")
+            .select("confessionText category isAnonymous collegeName likes commentCount isHidden createdAt user postType media isPremiumPost mediaStatus mediaExpireAt")
+            .populate("user", "username avatar isPremium")
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
