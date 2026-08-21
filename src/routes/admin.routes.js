@@ -191,12 +191,9 @@ router.post("/campus-connect/communities", requirePermission("userManagement", "
 router.put("/campus-connect/communities/:id", requirePermission("userManagement", "update"), ccAdmin.updateCommunity);
 router.delete("/campus-connect/communities/:id", requirePermission("userManagement", "delete"), ccAdmin.deleteCommunity);
 
-const multer = require("multer");
-const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-
 // Hierarchy Bulk CSV Upload
-router.post("/hierarchy/bulk-csv", requirePermission("userManagement", "create"), csvUpload.single("csv"), collegeHierarchyAdmin.adminBulkUploadCSV);
-router.post("/hierarchy/:category/bulk-csv", requirePermission("userManagement", "create"), csvUpload.single("csv"), collegeHierarchyAdmin.adminBulkUploadCSV);
+router.post("/hierarchy/bulk-csv", requirePermission("userManagement", "create"), upload.single("csv"), collegeHierarchyAdmin.adminBulkUploadCSV);
+router.post("/hierarchy/:category/bulk-csv", requirePermission("userManagement", "create"), upload.single("csv"), collegeHierarchyAdmin.adminBulkUploadCSV);
 
 // Hierarchy Universities CRUD
 router.get("/hierarchy/universities", requirePermission("userManagement", "view"), collegeHierarchyAdmin.adminGetUniversities);
