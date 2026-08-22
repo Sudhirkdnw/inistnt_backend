@@ -197,9 +197,11 @@ router.post("/campus-connect/communities", requirePermission("userManagement", "
 router.put("/campus-connect/communities/:id", requirePermission("userManagement", "update"), ccAdmin.updateCommunity);
 router.delete("/campus-connect/communities/:id", requirePermission("userManagement", "delete"), ccAdmin.deleteCommunity);
 
-// Hierarchy Bulk CSV Upload
+// Hierarchy Bulk CSV Upload & Export
 router.post("/hierarchy/bulk-csv", requirePermission("userManagement", "create"), upload.single("csv"), collegeHierarchyAdmin.adminBulkUploadCSV);
 router.post("/hierarchy/:category/bulk-csv", requirePermission("userManagement", "create"), upload.single("csv"), collegeHierarchyAdmin.adminBulkUploadCSV);
+router.get("/hierarchy/export-csv", requirePermission("userManagement", "view"), collegeHierarchyAdmin.adminExportCSV);
+router.get("/hierarchy/:category/export-csv", requirePermission("userManagement", "view"), collegeHierarchyAdmin.adminExportCSV);
 
 // Hierarchy Universities CRUD
 router.get("/hierarchy/universities", requirePermission("userManagement", "view"), collegeHierarchyAdmin.adminGetUniversities);

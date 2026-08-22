@@ -452,7 +452,7 @@ exports.adminBulkUploadCSV = async (req, res) => {
             });
 
             const rowType = (rowData.type || category).toLowerCase();
-            const name = rowData.name || rowData.title || rowData.collegename || rowData.universityname || rowData.departmentname || rowData.branchname;
+            const name = rowData.name || rowData.title || rowData.collegename || rowData.universityname || rowData.departmentname || rowData.branchname || rowData.coursename || rowData.course;
 
             if (!name) {
                 skippedCount++;
@@ -479,7 +479,7 @@ exports.adminBulkUploadCSV = async (req, res) => {
                         upsert: true
                     }
                 });
-            } else if (rowType.includes("camp") || rowType.includes("coll")) {
+            } else if (rowType.includes("camp") || rowType.includes("coll") || rowType.includes("inst")) {
                 collegeOps.push({
                     updateOne: {
                         filter: { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
@@ -495,7 +495,7 @@ exports.adminBulkUploadCSV = async (req, res) => {
                         upsert: true
                     }
                 });
-            } else if (rowType.includes("dept") || rowType.includes("depart")) {
+            } else if (rowType.includes("dept") || rowType.includes("depart") || rowType.includes("school") || rowType.includes("facult")) {
                 deptOps.push({
                     updateOne: {
                         filter: { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
@@ -509,14 +509,14 @@ exports.adminBulkUploadCSV = async (req, res) => {
                         upsert: true
                     }
                 });
-            } else if (rowType.includes("branch") || rowType.includes("course") || rowType.includes("major")) {
+            } else if (rowType.includes("branch") || rowType.includes("course") || rowType.includes("major") || rowType.includes("prog") || rowType.includes("spec")) {
                 branchOps.push({
                     updateOne: {
                         filter: { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
                         update: {
                             $set: {
                                 name,
-                                degree: rowData.degree || "",
+                                degree: rowData.degree || rowData.program || rowData.course || "",
                                 isActive
                             }
                         },
@@ -560,6 +560,85 @@ exports.adminBulkUploadCSV = async (req, res) => {
     } catch (err) {
         console.error("Bulk CSV upload error:", err);
         res.status(500).json({ message: "Failed to process CSV: " + err.message });
+    }
+};
+
+// ── BULK CSV EXPORT ENGINE ──────────────────────────────────────────────────
+exports.adminExportCSV = async (req, res) => {
+    try {
+        const category = (req.params.category || req.query.category || "unified").toLowerCase();
+
+        let csvContent = "";
+        let filename = "";
+
+        const escapeCSV = (str) => {
+            if (str === null || str === undefined) return "";
+            const s = String(str);
+            if (s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r")) {
+                return `"${s.replace(/"/g, '""')}"`;
+            }
+            return s;
+        };
+
+        if (category === "universities" || category === "university") {
+            const list = await University.find().sort({ name: 1 }).lean();
+            csvContent = "Name,City,State,isActive\n";
+            list.forEach(u => {
+                csvContent += `${escapeCSV(u.name)},${escapeCSV(u.city)},${escapeCSV(u.state)},${u.isActive !== false}\n`;
+            });
+            filename = `hykee_universities_export_${Date.now()}.csv`;
+        } else if (category === "campuses" || category === "colleges" || category === "college") {
+            const list = await College.find().sort({ name: 1 }).lean();
+            csvContent = "Name,Code,City,State,isActive\n";
+            list.forEach(c => {
+                csvContent += `${escapeCSV(c.name)},${escapeCSV(c.code)},${escapeCSV(c.city)},${escapeCSV(c.state)},${c.isActive !== false}\n`;
+            });
+            filename = `hykee_colleges_export_${Date.now()}.csv`;
+        } else if (category === "departments" || category === "department") {
+            const list = await Department.find().sort({ name: 1 }).lean();
+            csvContent = "Name,Code,isActive\n";
+            list.forEach(d => {
+                csvContent += `${escapeCSV(d.name)},${escapeCSV(d.code)},${d.isActive !== false}\n`;
+            });
+            filename = `hykee_departments_export_${Date.now()}.csv`;
+        } else if (category === "branches" || category === "branch" || category === "courses" || category === "course") {
+            const list = await Branch.find().sort({ name: 1 }).lean();
+            csvContent = "Name,Degree,isActive\n";
+            list.forEach(b => {
+                csvContent += `${escapeCSV(b.name)},${escapeCSV(b.degree)},${b.isActive !== false}\n`;
+            });
+            filename = `hykee_courses_branches_export_${Date.now()}.csv`;
+        } else {
+            // Unified export of everything in one clean spreadsheet
+            const [unis, colleges, depts, branches] = await Promise.all([
+                University.find().sort({ name: 1 }).lean(),
+                College.find().sort({ name: 1 }).lean(),
+                Department.find().sort({ name: 1 }).lean(),
+                Branch.find().sort({ name: 1 }).lean()
+            ]);
+
+            csvContent = "Type,Name,Code,City,State,Degree,isActive\n";
+            unis.forEach(u => {
+                csvContent += `University,${escapeCSV(u.name)},,${escapeCSV(u.city)},${escapeCSV(u.state)},,${u.isActive !== false}\n`;
+            });
+            colleges.forEach(c => {
+                csvContent += `College,${escapeCSV(c.name)},${escapeCSV(c.code)},${escapeCSV(c.city)},${escapeCSV(c.state)},,${c.isActive !== false}\n`;
+            });
+            depts.forEach(d => {
+                csvContent += `Department,${escapeCSV(d.name)},${escapeCSV(d.code)},,,,${d.isActive !== false}\n`;
+            });
+            branches.forEach(b => {
+                csvContent += `Branch,${escapeCSV(b.name)},,,,${escapeCSV(b.degree)},${b.isActive !== false}\n`;
+            });
+            filename = `hykee_academic_directory_full_export_${Date.now()}.csv`;
+        }
+
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        return res.status(200).send(csvContent);
+    } catch (err) {
+        console.error("Export CSV error:", err);
+        res.status(500).json({ message: "Failed to export CSV: " + err.message });
     }
 };
 
