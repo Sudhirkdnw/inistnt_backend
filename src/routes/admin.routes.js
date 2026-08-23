@@ -5,6 +5,8 @@ const adminMiddleware = require("../middlewares/adminMiddleware");
 const requirePermission = require("../middlewares/permission.middleware");
 const ccAdmin = require("../controllers/adminCampusConnect.controller");
 const collegeHierarchyAdmin = require("../controllers/collegeHierarchy.controller");
+const adminCommunityCtrl = require("../controllers/adminCommunity.controller");
+const adminTeamCtrl = require("../controllers/adminTeam.controller");
 
 const {
     getDashboard, getAllUsers, getUserDetails, toggleBan, changeRole, deleteUser, restoreUser,
@@ -191,11 +193,25 @@ router.post("/campus-connect/goals", requirePermission("userManagement", "create
 router.put("/campus-connect/goals/:id", requirePermission("userManagement", "update"), ccAdmin.updateGoal);
 router.delete("/campus-connect/goals/:id", requirePermission("userManagement", "delete"), ccAdmin.deleteGoal);
 
-// Communities
-router.get("/campus-connect/communities", requirePermission("userManagement", "view"), ccAdmin.getCommunities);
-router.post("/campus-connect/communities", requirePermission("userManagement", "create"), ccAdmin.createCommunity);
-router.put("/campus-connect/communities/:id", requirePermission("userManagement", "update"), ccAdmin.updateCommunity);
-router.delete("/campus-connect/communities/:id", requirePermission("userManagement", "delete"), ccAdmin.deleteCommunity);
+// Communities (Dedicated Platform Ecosystem)
+const communityUpload = upload.fields([
+    { name: 'icon', maxCount: 1 },
+    { name: 'coverPhoto', maxCount: 1 }
+]);
+
+router.get("/communities", requirePermission("userManagement", "view"), adminCommunityCtrl.getAdminCommunities);
+router.post("/communities", requirePermission("userManagement", "create"), communityUpload, adminCommunityCtrl.createCommunity);
+router.put("/communities/:id", requirePermission("userManagement", "update"), communityUpload, adminCommunityCtrl.updateCommunity);
+router.delete("/communities/:id", requirePermission("userManagement", "delete"), adminCommunityCtrl.deleteCommunity);
+router.get("/communities/:id/members", requirePermission("userManagement", "view"), adminCommunityCtrl.getAdminCommunityMembers);
+router.put("/communities/:id/members/:userId/role", requirePermission("userManagement", "update"), adminCommunityCtrl.updateMemberRole);
+router.delete("/communities/:id/members/:userId", requirePermission("userManagement", "delete"), adminCommunityCtrl.removeOrBanMember);
+
+// Campus Connect Communities (Legacy Compatibility)
+router.get("/campus-connect/communities", requirePermission("userManagement", "view"), adminCommunityCtrl.getAdminCommunities);
+router.post("/campus-connect/communities", requirePermission("userManagement", "create"), communityUpload, adminCommunityCtrl.createCommunity);
+router.put("/campus-connect/communities/:id", requirePermission("userManagement", "update"), communityUpload, adminCommunityCtrl.updateCommunity);
+router.delete("/campus-connect/communities/:id", requirePermission("userManagement", "delete"), adminCommunityCtrl.deleteCommunity);
 
 // Hierarchy Bulk CSV Upload & Export
 router.post("/hierarchy/bulk-csv", requirePermission("userManagement", "create"), upload.single("csv"), collegeHierarchyAdmin.adminBulkUploadCSV);
@@ -226,5 +242,11 @@ router.get("/hierarchy/branches", requirePermission("userManagement", "view"), c
 router.post("/hierarchy/branches", requirePermission("userManagement", "create"), collegeHierarchyAdmin.adminCreateBranch);
 router.put("/hierarchy/branches/:id", requirePermission("userManagement", "update"), collegeHierarchyAdmin.adminUpdateBranch);
 router.delete("/hierarchy/branches/:id", requirePermission("userManagement", "delete"), collegeHierarchyAdmin.adminDeleteBranch);
+
+// Team Finder Moderation CRUD
+router.get("/teams", requirePermission("userManagement", "view"), adminTeamCtrl.getAdminTeams);
+router.get("/teams/:id", requirePermission("userManagement", "view"), adminTeamCtrl.getAdminTeamDetails);
+router.put("/teams/:id/status", requirePermission("userManagement", "update"), adminTeamCtrl.updateAdminTeamStatus);
+router.delete("/teams/:id", requirePermission("userManagement", "delete"), adminTeamCtrl.deleteAdminTeam);
 
 module.exports = router;

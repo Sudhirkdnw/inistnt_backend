@@ -4,7 +4,7 @@ const conversationSchema = new mongoose.Schema(
     {
         type: {
             type: String,
-            enum: ["dm", "group"],
+            enum: ["dm", "group", "community", "team"],
             required: true,
             default: "dm",
         },
@@ -15,11 +15,21 @@ const conversationSchema = new mongoose.Schema(
             },
         ],
         name: {
-            type: String, // Only used for group chats
+            type: String, // Only used for group/community/team chats
         },
         admin: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "user", // Group creator/admin
+        },
+        communityId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Community",
+            index: true
+        },
+        teamId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Team",
+            index: true
         },
         lastMessage: {
             type: mongoose.Schema.Types.ObjectId,

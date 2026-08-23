@@ -59,8 +59,14 @@ const confessionSchema = new mongoose.Schema({
     },
     postType: {
         type: String,
-        enum: ["TEXT", "PHOTO"],
+        enum: ["TEXT", "PHOTO", "TEAM_RECRUITMENT"],
         default: "TEXT",
+        index: true
+    },
+    team: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Team",
+        default: null,
         index: true
     },
     media: [{

@@ -7,13 +7,28 @@ const communitySchema = new mongoose.Schema({
         unique: true,
         trim: true
     },
+    slug: {
+        type: String,
+        required: true,
+        unique: true,
+        trim: true,
+        lowercase: true
+    },
+    shortDescription: {
+        type: String,
+        default: "",
+        maxlength: 160,
+        trim: true
+    },
     description: {
         type: String,
-        default: ""
+        default: "",
+        trim: true
     },
     category: {
         type: String,
-        default: "General"
+        default: "Technology",
+        trim: true
     },
     icon: {
         type: String,
@@ -23,6 +38,23 @@ const communitySchema = new mongoose.Schema({
         type: String,
         default: ""
     },
+    rules: {
+        type: String,
+        default: ""
+    },
+    status: {
+        type: String,
+        enum: ["ACTIVE", "INACTIVE", "ARCHIVED"],
+        default: "ACTIVE"
+    },
+    memberCount: {
+        type: Number,
+        default: 0
+    },
+    conversation: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Conversation"
+    },
     isPinned: {
         type: Boolean,
         default: false
@@ -31,9 +63,9 @@ const communitySchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
-    isActive: {
-        type: Boolean,
-        default: true
+    createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "user"
     },
     moderators: [{
         type: mongoose.Schema.Types.ObjectId,
@@ -45,6 +77,9 @@ const communitySchema = new mongoose.Schema({
     }]
 }, { timestamps: true });
 
-communitySchema.index({ isPinned: -1, isFeatured: -1 });
+// ── Indexes ─────────────────────────────────────────────
+communitySchema.index({ status: 1, isPinned: -1, isFeatured: -1, memberCount: -1 });
+communitySchema.index({ category: 1, status: 1 });
+communitySchema.index({ name: "text", shortDescription: "text", description: "text" });
 
 module.exports = mongoose.model("Community", communitySchema);

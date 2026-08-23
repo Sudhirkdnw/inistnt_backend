@@ -15,6 +15,7 @@ router.get("/public", async (req, res) => {
             'maintenance_message', 'new_registrations', 'registration_message',
             'dating_module', 'anonymous_chat', 'anonymous_confessions',
             'premium_photo_confessions_enabled',
+            'allow_screenshots',
             'max_confession_length', 'min_dating_photos',
             'splash_day_url', 'splash_night_url'
         ];
@@ -28,6 +29,11 @@ router.get("/public", async (req, res) => {
         // Fallback for premium_photo_confessions_enabled from cache
         if (config.premium_photo_confessions_enabled === undefined) {
             config.premium_photo_confessions_enabled = getSetting('premium_photo_confessions_enabled', false);
+        }
+
+        // Fallback for allow_screenshots from cache
+        if (config.allow_screenshots === undefined) {
+            config.allow_screenshots = getSetting('allow_screenshots', false);
         }
 
         res.status(200).json(config);

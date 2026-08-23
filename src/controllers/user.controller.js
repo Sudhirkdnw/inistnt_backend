@@ -169,8 +169,75 @@ async function updateProfile(req, res) {
 
         // Student identity fields
         if (req.body.coverPhoto !== undefined) user.coverPhoto = req.body.coverPhoto;
-        if (req.body.collegeName !== undefined) user.collegeName = req.body.collegeName;
-        if (req.body.university !== undefined) user.university = req.body.university;
+
+        const University = require("../models/university.model");
+        const College = require("../models/college.model");
+        const mongoose = require("mongoose");
+
+        if (req.body.university !== undefined || req.body.universityId !== undefined) {
+            const rawUniId = req.body.universityId;
+            const rawUniName = req.body.university;
+            if (rawUniId && mongoose.Types.ObjectId.isValid(rawUniId)) {
+                const uDoc = await University.findById(rawUniId);
+                if (uDoc) {
+                    user.universityId = uDoc._id;
+                    user.university = uDoc.name;
+                } else {
+                    user.university = rawUniName || "";
+                    user.universityId = null;
+                }
+            } else if (rawUniName && rawUniName.trim()) {
+                const uDoc = await University.findOne({ name: new RegExp(`^${rawUniName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
+                if (uDoc) {
+                    user.universityId = uDoc._id;
+                    user.university = uDoc.name;
+                } else {
+                    user.university = rawUniName.trim();
+                    user.universityId = null;
+                }
+            } else {
+                user.university = "";
+                user.universityId = null;
+            }
+        }
+
+        if (req.body.collegeName !== undefined || req.body.collegeId !== undefined) {
+            const rawColId = req.body.collegeId;
+            const rawColName = req.body.collegeName;
+            if (rawColId && mongoose.Types.ObjectId.isValid(rawColId)) {
+                const cDoc = await College.findById(rawColId);
+                if (cDoc) {
+                    user.collegeId = cDoc._id;
+                    user.collegeName = cDoc.name;
+                    if (!user.universityId && cDoc.university) {
+                        user.universityId = cDoc.university;
+                        const uDoc = await University.findById(cDoc.university);
+                        if (uDoc) user.university = uDoc.name;
+                    }
+                } else {
+                    user.collegeName = rawColName || "";
+                    user.collegeId = null;
+                }
+            } else if (rawColName && rawColName.trim()) {
+                const cDoc = await College.findOne({ name: new RegExp(`^${rawColName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
+                if (cDoc) {
+                    user.collegeId = cDoc._id;
+                    user.collegeName = cDoc.name;
+                    if (!user.universityId && cDoc.university) {
+                        user.universityId = cDoc.university;
+                        const uDoc = await University.findById(cDoc.university);
+                        if (uDoc) user.university = uDoc.name;
+                    }
+                } else {
+                    user.collegeName = rawColName.trim();
+                    user.collegeId = null;
+                }
+            } else {
+                user.collegeName = "";
+                user.collegeId = null;
+            }
+        }
+
         if (req.body.department !== undefined) user.department = req.body.department;
         if (req.body.branch !== undefined) user.branch = req.body.branch;
         if (req.body.semester !== undefined) user.semester = req.body.semester ? Number(req.body.semester) : null;
@@ -314,7 +381,19 @@ async function verifyEmail(req, res) {
         user.emailVerificationExpire = undefined;
         await user.save();
 
-        res.status(200).json({ message: "Email verified successfully!", isEmailVerified: true });
+        res.status(200).json({
+            message: "Email verified successfully!",
+            isEmailVerified: true,
+            user: {
+                _id: user._id,
+                username: user.username,
+                email: user.email,
+                fullName: user.fullName,
+                isEmailVerified: true,
+                isVerified: user.isVerified,
+                verificationStatus: user.verificationStatus,
+            }
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

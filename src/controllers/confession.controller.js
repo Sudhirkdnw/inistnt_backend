@@ -205,8 +205,12 @@ const getFeed = async (req, res) => {
         if (cursor) filter._id = { $lt: cursor };
 
         const confessions = await confessionModel.find(filter)
-            .select('confessionText category user isAnonymous likes commentCount poll collegeName createdAt postType media isPremiumPost mediaStatus mediaExpireAt')
-            .populate("user", "username fullName avatar isPrivate collegeName")
+            .select('confessionText category user isAnonymous likes commentCount poll collegeName createdAt postType media team isPremiumPost mediaStatus mediaExpireAt')
+            .populate("user", "username fullName avatar isPrivate collegeName branch year isCollegeVerified isEmailVerified")
+            .populate({
+                path: "team",
+                populate: { path: "owner", select: "username fullName avatar collegeName isVerified" }
+            })
             .sort({ _id: -1 })
             .limit(limit)
             .lean(); // Use lean for performance

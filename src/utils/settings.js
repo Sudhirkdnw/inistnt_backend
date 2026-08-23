@@ -27,6 +27,7 @@ const syncSettings = async () => {
             { key: 'blocked_email_domains', value: '', category: 'Security' },
             { key: 'otp_verification', value: false, category: 'Security' },
             { key: 'session_timeout', value: 24, category: 'Security' },
+            { key: 'allow_screenshots', value: false, description: 'Allow users to take screenshots and record screen inside the mobile app (Disabled by default)', category: 'Security' },
             { key: 'ai_service_enabled', value: true, category: 'AI', description: 'Enable or disable AI features globally' },
             { key: 'ai_api_key', value: '', category: 'AI', description: 'API Key for Groq AI SDK (overrides environment variable)' },
             { key: 'ai_model', value: 'openai/gpt-oss-120b', category: 'AI', description: 'Groq Model name to use' },

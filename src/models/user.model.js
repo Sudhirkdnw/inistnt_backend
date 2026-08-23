@@ -101,6 +101,11 @@ const userSchema = new mongoose.Schema({
         trim: true,
         default: ""
     },
+    collegeId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "College",
+        default: null
+    },
     coverPhoto: {
         type: String,
         default: ""
@@ -109,6 +114,11 @@ const userSchema = new mongoose.Schema({
         type: String,
         trim: true,
         default: ""
+    },
+    universityId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "University",
+        default: null
     },
     department: {
         type: String,

@@ -21,6 +21,12 @@ const registerSchema = {
         collegeName: z.string({
             required_error: "College/University name is required"
         }).trim(),
+        collegeId: z.string().optional(),
+        university: z.string().trim().optional(),
+        universityId: z.string().optional(),
+        department: z.string().trim().optional(),
+        branch: z.string().trim().optional(),
+        semester: z.union([z.string(), z.number()]).optional(),
         collegeEmail: z.string().email("Invalid email format").trim().toLowerCase().optional(),
         verificationMethod: z.enum(["EMAIL", "ID_CARD"]).optional(),
         otp: z.string().trim().optional()

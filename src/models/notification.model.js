@@ -15,9 +15,14 @@ const notificationSchema = new mongoose.Schema({
         type: String,
         enum: [
             "like", "comment", "follow", "follow_request", "mention", "dating_match", "dating_like",
-            "campus_connect_mutual", "campus_connect_request", "campus_connect_hi", "campus_connect_save", "mentor_request"
+            "campus_connect_mutual", "campus_connect_request", "campus_connect_hi", "campus_connect_save", "mentor_request",
+            "team_application", "team_application_accepted", "team_application_rejected"
         ],
         required: true
+    },
+    team: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Team"
     },
     confession: {
         type: mongoose.Schema.Types.ObjectId,

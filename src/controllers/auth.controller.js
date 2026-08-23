@@ -65,14 +65,76 @@ async function registerController(req, res) {
             return res.status(403).json({ message: "New registrations are currently disabled by administrator" });
         }
 
-        const { username, password, email, fullName, collegeName, collegeEmail, verificationMethod, university, department, branch, semester } = req.body;
+        const { username, password, email, fullName, collegeName, collegeId, collegeEmail, verificationMethod, university, universityId, department, branch, semester } = req.body;
 
         if (!username || !password) {
             return res.status(400).json({ message: "Username and password are required" });
         }
 
-        if (!collegeName) {
+        if (!collegeName && !collegeId) {
             return res.status(400).json({ message: "College/University name is required" });
+        }
+
+        const University = require("../models/university.model");
+        const College = require("../models/college.model");
+        const mongoose = require("mongoose");
+
+        let resolvedUniId = null;
+        let resolvedUniName = university ? university.trim() : "";
+
+        if (universityId && mongoose.Types.ObjectId.isValid(universityId)) {
+            const uniDoc = await University.findById(universityId);
+            if (!uniDoc || uniDoc.isActive === false) {
+                return res.status(400).json({ message: "Selected University is invalid or currently inactive." });
+            }
+            resolvedUniId = uniDoc._id;
+            resolvedUniName = uniDoc.name;
+        } else if (resolvedUniName) {
+            const uniDoc = await University.findOne({
+                name: new RegExp(`^${resolvedUniName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+                isActive: true
+            });
+            if (uniDoc) {
+                resolvedUniId = uniDoc._id;
+                resolvedUniName = uniDoc.name;
+            }
+        }
+
+        let resolvedCollegeId = null;
+        let resolvedCollegeName = collegeName ? collegeName.trim() : "";
+
+        if (collegeId && mongoose.Types.ObjectId.isValid(collegeId)) {
+            const colDoc = await College.findById(collegeId);
+            if (!colDoc || colDoc.isActive === false) {
+                return res.status(400).json({ message: "Selected College is invalid or currently inactive." });
+            }
+            if (resolvedUniId && colDoc.university && colDoc.university.toString() !== resolvedUniId.toString()) {
+                return res.status(400).json({ message: "Selected College does not belong to the chosen University." });
+            }
+            resolvedCollegeId = colDoc._id;
+            resolvedCollegeName = colDoc.name;
+            if (!resolvedUniId && colDoc.university) {
+                resolvedUniId = colDoc.university;
+                const autoUni = await University.findById(colDoc.university);
+                if (autoUni) resolvedUniName = autoUni.name;
+            }
+        } else if (resolvedCollegeName) {
+            const colDoc = await College.findOne({
+                name: new RegExp(`^${resolvedCollegeName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+                isActive: true
+            });
+            if (colDoc) {
+                if (resolvedUniId && colDoc.university && colDoc.university.toString() !== resolvedUniId.toString()) {
+                    return res.status(400).json({ message: "Selected College does not belong to the chosen University." });
+                }
+                resolvedCollegeId = colDoc._id;
+                resolvedCollegeName = colDoc.name;
+                if (!resolvedUniId && colDoc.university) {
+                    resolvedUniId = colDoc.university;
+                    const autoUni = await University.findById(colDoc.university);
+                    if (autoUni) resolvedUniName = autoUni.name;
+                }
+            }
         }
 
         const hasIdCard = req.file;
@@ -176,8 +238,10 @@ async function registerController(req, res) {
             password: await bcrypt.hash(password, 10),
             email: email ? email.toLowerCase() : undefined,
             fullName: fullName || "",
-            collegeName,
-            university: university || "",
+            collegeName: resolvedCollegeName,
+            collegeId: resolvedCollegeId,
+            university: resolvedUniName,
+            universityId: resolvedUniId,
             department: department || "",
             branch: branch || "",
             semester: semester ? Number(semester) : null,

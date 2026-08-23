@@ -34,4 +34,7 @@ const collegeSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
+collegeSchema.index({ university: 1, isActive: 1 });
+collegeSchema.index({ name: 1, isActive: 1 });
+
 module.exports = mongoose.model("College", collegeSchema);
