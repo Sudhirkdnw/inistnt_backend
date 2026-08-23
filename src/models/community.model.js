@@ -91,6 +91,16 @@ const communitySchema = new mongoose.Schema({
     }]
 }, { timestamps: true });
 
+// ── Pre-validate Hook for Slug ──────────────────────────
+communitySchema.pre("validate", function () {
+    if (this.name && !this.slug) {
+        this.slug = this.name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/(^-|-$)/g, "") + "-" + Date.now().toString(36);
+    }
+});
+
 // ── Indexes ─────────────────────────────────────────────
 communitySchema.index({ collegeName: 1, status: 1 });
 communitySchema.index({ status: 1, isPinned: -1, isFeatured: -1, memberCount: -1 });

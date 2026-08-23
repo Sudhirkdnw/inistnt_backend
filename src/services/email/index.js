@@ -51,28 +51,18 @@ function isSpamRateLimited(emailAddress) {
 
 /**
  * Initializes the backend queue structure.
- * Validates only what is necessary to push emails to the queue.
  */
 async function initEmailSystem() {
-    console.log("🚀 [Email System] Initializing Push-Only Queue Interface...");
-
-    const emailFrom = process.env.EMAIL_FROM;
+    const emailFrom = process.env.EMAIL_FROM || getSetting("email_from", "verify@hykee.in");
     if (!emailFrom) {
         throw new Error("❌ [Email System] EMAIL_FROM is not defined in the environment.");
-    }
-
-    // Validate EMAIL_FROM format
-    try {
-        clientModule.sanitizeEmailAddress(emailFrom.includes("<") ? emailFrom.match(/<([^>]+)>/)[1] : emailFrom);
-    } catch (err) {
-        throw new Error(`❌ [Email System] Invalid email address format in EMAIL_FROM ("${emailFrom}"): ${err.message}`);
     }
 
     emailQueue.start();
 }
 
 /**
- * Shuts down background threads gracefully.
+ * Shuts down background queue gracefully.
  */
 function shutdownEmailSystem() {
     emailQueue.stop();
@@ -82,7 +72,7 @@ function shutdownEmailSystem() {
  * Primary Core Email Dispatcher.
  * 1. Sanitizes inputs.
  * 2. Runs per-recipient abuse rate limiter.
- * 3. Compiles high-aesthetic HTML content.
+ * 3. Compiles high-deliverability HTML + matching Plain Text content.
  * 4. Persists the transaction immediately.
  * 5. Pushes to non-blocking background dispatch queue.
  */
@@ -102,10 +92,11 @@ async function sendEmailAsync({ to, subject, htmlBody, textBody, templateName })
     // 3. Persist Log Record Immediately in Pending Status
     const dbLog = await EmailLogger.logQueued(cleanTo, cleanSubject, templateName || "general");
 
-    // Store HTML Body in Mongoose log's metadata to pass to the queue processor
+    // Store HTML & Plain-Text in Mongoose log metadata
     dbLog.metadata = {
         ...dbLog.metadata,
-        htmlBody: htmlBody || `<p>${cleanSubject}</p>`
+        htmlBody: htmlBody || `<p>${cleanSubject}</p>`,
+        textBody: textBody || cleanSubject
     };
     await dbLog.save();
 
@@ -121,7 +112,7 @@ async function sendEmailAsync({ to, subject, htmlBody, textBody, templateName })
 
 /**
  * Helper to fetch a template from DB, substitute variables, and wrap in layout.
- * Falls back to null if template not found or error occurs.
+ * Falls back to null if template not found.
  */
 async function renderDbTemplate(templateName, variables) {
     try {
@@ -131,14 +122,6 @@ async function renderDbTemplate(templateName, variables) {
 
         const platformName = getSetting("platform_name", "Hykee");
         const supportEmail = getSetting("support_email", "support@hykee.in");
-        const supportPhone = getSetting("support_phone", "+91 70707 99200");
-        const companyName = getSetting("company_name", "Hykee");
-        const companyAddress = getSetting("company_address", "Greater Noida");
-        const platformDescription = getSetting("platform_description", "College Confession & Dating Platform");
-        const dateFormat = getSetting("date_format", "MMM DD, YYYY");
-        const defaultCurrency = getSetting("default_currency", "IN");
-        const defaultLanguage = getSetting("default_language", "en");
-        const timezone = getSetting("timezone", "UTC");
 
         let content = template.content;
         let subject = template.subject;
@@ -146,15 +129,7 @@ async function renderDbTemplate(templateName, variables) {
         const allVars = {
             ...variables,
             platform_name: platformName,
-            support_email: supportEmail,
-            support_phone: supportPhone,
-            company_name: companyName,
-            company_address: companyAddress,
-            platform_description: platformDescription,
-            date_format: dateFormat,
-            default_currency: defaultCurrency,
-            default_language: defaultLanguage,
-            timezone: timezone
+            support_email: supportEmail
         };
 
         Object.entries(allVars).forEach(([key, val]) => {
@@ -168,95 +143,73 @@ async function renderDbTemplate(templateName, variables) {
             htmlBody = templatesModule.getMasterLayout(subject, content, platformName);
         }
 
-        return { subject, htmlBody };
+        // Clean plain text fallback
+        const textBody = content.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+
+        return { subject, htmlBody, textBody };
     } catch (err) {
-        console.error(`⚠️ Failed to load template '${templateName}' from DB:`, err.message);
         return null;
     }
 }
 
 /**
  * Public API 1: sendVerificationEmail(email, code, username)
- * Dispatches a premium verification OTP email.
+ * Dispatches a simple, professional OTP verification email.
  */
 async function sendVerificationEmail(email, code, username = "") {
     const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
-    const dbTemplate = await renderDbTemplate("otp_verification", {
-        otp: code,
-        code: code,
-        username: cleanUsername
-    });
-
-    let subject, htmlBody;
-    if (dbTemplate) {
-        subject = dbTemplate.subject;
-        htmlBody = dbTemplate.htmlBody;
-    } else {
-        subject = `${code} is your ${platformName} verification code`;
-        htmlBody = templatesModule.renderOtpVerification(code, cleanUsername, platformName);
-    }
-
-    const textBody = `Welcome to ${platformName}! Use verification code ${code} to verify your email address.`;
+    const rendered = templatesModule.renderOtpVerification(code, cleanUsername, platformName);
 
     return sendEmailAsync({
         to: email,
-        subject,
-        htmlBody,
-        textBody,
+        subject: rendered.subject,
+        htmlBody: rendered.htmlBody,
+        textBody: rendered.textBody,
         templateName: "otp_verification"
     });
 }
 
 /**
  * Public API 2: sendGeneralEmail(to, subject, bodyHtml, text = "", templateName = "general")
- * Dispatches standard HTML emails wrapped in the premium master layout.
+ * Dispatches standard HTML emails wrapped in the clean master layout.
  */
 async function sendGeneralEmail(to, subject, bodyHtml, text = "", templateName = "general") {
     const platformName = getSetting("platform_name", "Hykee");
     const cleanSubject = clientModule.sanitizeEmailInput(subject);
 
     let htmlBody = bodyHtml;
-    // Wrap in Master Layout if not already a fully formed document
     if (!bodyHtml.includes("<!DOCTYPE html>") && !bodyHtml.includes("<html>")) {
         htmlBody = templatesModule.getMasterLayout(cleanSubject, bodyHtml, platformName);
     }
+
+    const textBody = text || bodyHtml.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 
     return sendEmailAsync({
         to,
         subject: cleanSubject,
         htmlBody,
-        textBody: text,
+        textBody,
         templateName
     });
 }
 
 /**
  * Public API 3: sendWelcomeEmail(email, username)
- * Dispatches a premium welcome email upon successful verification.
+ * Dispatches an account confirmation email upon successful verification.
  */
 async function sendWelcomeEmail(email, username = "") {
     const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
-    const dbTemplate = await renderDbTemplate("welcome_email", {
-        username: cleanUsername
-    });
-
-    let subject, htmlBody;
-    if (dbTemplate) {
-        subject = dbTemplate.subject;
-        htmlBody = dbTemplate.htmlBody;
-    } else {
-        subject = `Welcome to ${platformName}! 🎉`;
-        htmlBody = templatesModule.renderWelcomeEmail(cleanUsername, platformName);
-    }
+    const rendered = templatesModule.renderWelcomeEmail(cleanUsername, platformName);
 
     return sendEmailAsync({
         to: email,
-        subject,
-        htmlBody,
+        subject: rendered.subject,
+        htmlBody: rendered.htmlBody,
+        textBody: rendered.textBody,
         templateName: "welcome_email"
     });
 }
@@ -269,109 +222,51 @@ async function sendSecurityAlert(email, username = "", alertDetails = {}) {
     const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
-    const dbTemplate = await renderDbTemplate("security_alert", {
-        username: cleanUsername,
-        action: alertDetails.action || "New Account Activity",
-        ipAddress: alertDetails.ipAddress || "Unknown IP",
-        device: alertDetails.device || "Unknown Device",
-        time: alertDetails.time || new Date().toLocaleString()
-    });
-
-    let subject, htmlBody;
-    if (dbTemplate) {
-        subject = dbTemplate.subject;
-        htmlBody = dbTemplate.htmlBody;
-    } else {
-        subject = `🚨 Security Alert for your ${platformName} account`;
-        htmlBody = templatesModule.renderSecurityAlert(alertDetails, cleanUsername, platformName);
-    }
+    const rendered = templatesModule.renderSecurityAlert(alertDetails, cleanUsername, platformName);
 
     return sendEmailAsync({
         to: email,
-        subject,
-        htmlBody,
+        subject: rendered.subject,
+        htmlBody: rendered.htmlBody,
+        textBody: rendered.textBody,
         templateName: "security_alert"
     });
 }
 
 /**
  * Public API 5: sendApprovalEmail(email, username)
- * Dispatches an account approval email to the verified student.
+ * Dispatches a student verification approval email.
  */
 async function sendApprovalEmail(email, username = "") {
     const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
-    const dbTemplate = await renderDbTemplate("account_approval", {
-        username: cleanUsername
-    });
-
-    let subject, htmlBody;
-    if (dbTemplate) {
-        subject = dbTemplate.subject;
-        htmlBody = dbTemplate.htmlBody;
-    } else {
-        subject = `Your ${platformName} account has been approved`;
-        const messageContent = `
-            <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
-                <p>Dear ${cleanUsername},</p>
-                <p>Your student identity has been verified successfully. You can now access ${platformName}.</p>
-                <p>Feel free to log in and start connecting with your fellow college peers right away!</p>
-                <div style="margin: 25px 0;">
-                    <a href="${process.env.CLIENT_URL}/login" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Get Started</a>
-                </div>
-                <p>Best regards,<br>The ${platformName} Support Team</p>
-            </div>
-        `;
-        htmlBody = templatesModule.getMasterLayout(subject, messageContent, platformName);
-    }
+    const rendered = templatesModule.renderAccountApproval(cleanUsername, platformName);
 
     return sendEmailAsync({
         to: email,
-        subject,
-        htmlBody,
+        subject: rendered.subject,
+        htmlBody: rendered.htmlBody,
+        textBody: rendered.textBody,
         templateName: "account_approval"
     });
 }
 
 /**
  * Public API 6: sendRejectionEmail(email, username, reason)
- * Dispatches a polite account rejection email.
+ * Dispatches a student verification rejection update email.
  */
 async function sendRejectionEmail(email, username = "", reason = "") {
     const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
-    const dbTemplate = await renderDbTemplate("account_rejection", {
-        username: cleanUsername,
-        reason: reason || "The uploaded college ID card was blurry, expired, or did not match the provided university details."
-    });
-
-    let subject, htmlBody;
-    if (dbTemplate) {
-        subject = dbTemplate.subject;
-        htmlBody = dbTemplate.htmlBody;
-    } else {
-        subject = `Student Verification Update - ${platformName}`;
-        const messageContent = `
-            <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
-                <p>Dear ${cleanUsername},</p>
-                <p>Thank you for your interest in joining ${platformName}. We have reviewed the college ID card verification you provided.</p>
-                <p>Unfortunately, your verification could not be approved at this time for the following reason:</p>
-                <div style="background-color: #FEE2E2; border-left: 4px solid #EF4444; padding: 15px; margin: 20px 0; border-radius: 4px; color: #991B1B;">
-                    <strong>Reason:</strong> ${reason || "The uploaded college ID card was blurry, expired, or did not match the provided university details."}
-                </div>
-                <p>If you believe this was an error, please sign up again with a clearer picture of your student ID card or try verifying using a valid college email address.</p>
-                <p>Best regards,<br>The ${platformName} Team</p>
-            </div>
-        `;
-        htmlBody = templatesModule.getMasterLayout(subject, messageContent, platformName);
-    }
+    const rendered = templatesModule.renderAccountRejection(cleanUsername, reason, platformName);
 
     return sendEmailAsync({
         to: email,
-        subject,
-        htmlBody,
+        subject: rendered.subject,
+        htmlBody: rendered.htmlBody,
+        textBody: rendered.textBody,
         templateName: "account_rejection"
     });
 }
@@ -384,61 +279,56 @@ async function sendPasswordResetEmail(email, resetUrl, username = "") {
     const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
-    const dbTemplate = await renderDbTemplate("password_reset", {
-        url: resetUrl,
-        username: cleanUsername
-    });
-
-    let subject, htmlBody;
-    if (dbTemplate) {
-        subject = dbTemplate.subject;
-        htmlBody = dbTemplate.htmlBody;
-    } else {
-        subject = `Reset Your Password - ${platformName}`;
-        htmlBody = templatesModule.renderPasswordReset(resetUrl, cleanUsername, platformName);
-    }
+    const rendered = templatesModule.renderPasswordReset(resetUrl, cleanUsername, platformName);
 
     return sendEmailAsync({
         to: email,
-        subject,
-        htmlBody,
-        textBody: `Click here to reset your password: ${resetUrl}`,
+        subject: rendered.subject,
+        htmlBody: rendered.htmlBody,
+        textBody: rendered.textBody,
         templateName: "password_reset"
     });
 }
 
 /**
  * Public API 8: sendBillingEmail(email, username, invoiceDetails)
- * Dispatches a premium billing confirmation/receipt email.
+ * Dispatches a billing receipt email.
  */
 async function sendBillingEmail(email, username = "", invoiceDetails = {}) {
     const platformName = getSetting("platform_name", "Hykee");
     const cleanUsername = clientModule.sanitizeEmailInput(username) || email.split("@")[0];
 
-    const dbTemplate = await renderDbTemplate("billing_receipt", {
-        username: cleanUsername,
-        planName: invoiceDetails.planName || "Premium Plan",
-        amount: invoiceDetails.amount || "0",
-        gateway: invoiceDetails.gateway || "stripe",
-        transactionId: invoiceDetails.transactionId || "N/A",
-        date: invoiceDetails.date || new Date().toLocaleDateString(),
-        expiryDate: invoiceDetails.expiryDate || "N/A"
-    });
-
-    let subject, htmlBody;
-    if (dbTemplate) {
-        subject = dbTemplate.subject;
-        htmlBody = dbTemplate.htmlBody;
-    } else {
-        subject = `Billing Receipt: Your ${platformName} Premium subscription is active! 🎉`;
-        htmlBody = templatesModule.renderBillingReceipt(invoiceDetails, cleanUsername, platformName);
-    }
+    const rendered = templatesModule.renderBillingReceipt(invoiceDetails, cleanUsername, platformName);
 
     return sendEmailAsync({
         to: email,
-        subject,
-        htmlBody,
+        subject: rendered.subject,
+        htmlBody: rendered.htmlBody,
+        textBody: rendered.textBody,
         templateName: "billing_receipt"
+    });
+}
+
+/**
+ * Public API 9: sendAdminVerificationRequestEmail(adminEmail, studentDetails, approveUrl, rejectUrl, adminPanelUrl)
+ * Dispatches a clean notification to the admin with 1-click Approve and Reject buttons.
+ */
+async function sendAdminVerificationRequestEmail(adminEmail, studentDetails, approveUrl, rejectUrl, adminPanelUrl) {
+    const platformName = getSetting("platform_name", "Hykee");
+    const rendered = templatesModule.renderAdminVerificationRequest(
+        studentDetails,
+        approveUrl,
+        rejectUrl,
+        adminPanelUrl,
+        platformName
+    );
+
+    return sendEmailAsync({
+        to: adminEmail,
+        subject: rendered.subject,
+        htmlBody: rendered.htmlBody,
+        textBody: rendered.textBody,
+        templateName: "admin_verification_request"
     });
 }
 
@@ -453,5 +343,6 @@ module.exports = {
     sendApprovalEmail,
     sendRejectionEmail,
     sendPasswordResetEmail,
-    sendBillingEmail
+    sendBillingEmail,
+    sendAdminVerificationRequestEmail
 };

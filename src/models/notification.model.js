@@ -16,7 +16,8 @@ const notificationSchema = new mongoose.Schema({
         enum: [
             "like", "comment", "follow", "follow_request", "mention", "dating_match", "dating_like",
             "campus_connect_mutual", "campus_connect_request", "campus_connect_hi", "campus_connect_save", "mentor_request",
-            "team_application", "team_application_accepted", "team_application_rejected"
+            "team_application", "team_application_accepted", "team_application_rejected",
+            "verification_approved", "verification_rejected"
         ],
         required: true
     },

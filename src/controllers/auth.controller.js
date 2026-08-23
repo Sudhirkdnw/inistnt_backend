@@ -255,13 +255,11 @@ async function registerController(req, res) {
             loginHistory: [{ ...metadata, isSuspicious: false }]
         });
 
-        // Broadcast real-time Socket.IO notification to admin dashboard
-        if (resolvedMethod === "ID_CARD" && global.ioInstance) {
-            global.ioInstance.to("admin:monitoring").emit("new-id-verification", {
-                userId: user._id,
-                username: user.username,
-                collegeName: user.collegeName,
-                timestamp: new Date()
+        // Create Verification Request and dispatch Admin Email for ID_CARD flow
+        if (resolvedMethod === "ID_CARD") {
+            const verificationCtrl = require("./verification.controller");
+            verificationCtrl.createVerificationRequest(user, idCardImage, idCardMetadata).catch(err => {
+                console.error("Failed to create verification request on register:", err);
             });
         }
 

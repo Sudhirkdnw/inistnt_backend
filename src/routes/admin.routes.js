@@ -94,9 +94,10 @@ router.get("/analytics", requirePermission("analytics", "view"), getAnalytics);
 router.get("/audit-logs", requirePermission("analytics", "view"), getAuditLogs);
 
 // Verification Requests Module
-router.get("/verifications", requirePermission("verificationRequests", "view"), getPendingVerifications);
+const verificationCtrl = require("../controllers/verification.controller");
+router.get("/verifications", requirePermission("verificationRequests", "view"), verificationCtrl.getVerifications);
 router.post("/verifications/bulk-handle", requirePermission("verificationRequests", "update"), bulkHandleVerifications);
-router.put("/verifications/:id", requirePermission("verificationRequests", "update"), handleVerification);
+router.put("/verifications/:id", requirePermission("verificationRequests", "update"), verificationCtrl.handleVerificationAdmin);
 
 // Campus Connect User Moderation
 router.get("/campus-connect/users", requirePermission("dating", "view"), ccAdmin.getCCUsers);

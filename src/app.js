@@ -112,6 +112,8 @@ const settingsRoutes = require("./routes/settings.routes");
 const rateLimiter = require('./middlewares/rateLimiter');
 const setupSwagger = require('./config/swagger');
 
+const verificationRoutes = require("./routes/verification.routes");
+
 // Setup Swagger API Docs
 setupSwagger(app);
 
@@ -122,6 +124,7 @@ app.use("/api/users", rateLimiter({ windowMs: 60 * 1000, max: 100, prefix: 'user
 app.use("/api/stories", rateLimiter({ windowMs: 60 * 1000, max: 60, prefix: 'stories' }), storyRoutes);
 app.use("/api/notifications", rateLimiter({ windowMs: 60 * 1000, max: 60, prefix: 'notifs' }), notificationRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/verifications", verificationRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/chat", rateLimiter({ windowMs: 60 * 1000, max: 200, prefix: 'chat' }), chatRoutes);
 app.use("/api/posts", rateLimiter({ windowMs: 60 * 1000, max: 100, prefix: 'posts' }), postRoutes);

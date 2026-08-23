@@ -19,6 +19,7 @@ module.exports = {
     sendApprovalEmail: emailSystem.sendApprovalEmail,
     sendRejectionEmail: emailSystem.sendRejectionEmail,
     sendPasswordResetEmail: emailSystem.sendPasswordResetEmail,
+    sendAdminVerificationRequestEmail: emailSystem.sendAdminVerificationRequestEmail,
 
     // Lifecycle Hooks
     initEmailSystem: emailSystem.initEmailSystem,

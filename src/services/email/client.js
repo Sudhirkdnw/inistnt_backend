@@ -1,3 +1,6 @@
+const axios = require("axios");
+const { getSetting } = require("../../utils/settings");
+
 /**
  * Sanitizes input fields to prevent header injection, script injections, and email abuse.
  */
@@ -29,7 +32,35 @@ function sanitizeEmailAddress(email) {
     return sanitized;
 }
 
+/**
+ * Factory that returns a unified Resend client interface.
+ */
+function getResendClient() {
+    const apiKey = getSetting("resend_api_key", "") || process.env.RESEND_API_KEY || "";
+
+    return {
+        emails: {
+            send: async (payload) => {
+                if (!apiKey) {
+                    console.warn("⚠️ [Email System] RESEND_API_KEY is not configured in environment or settings. Simulating dispatch.");
+                    return { data: { id: `mock-${Date.now()}` } };
+                }
+
+                const response = await axios.post("https://api.resend.com/emails", payload, {
+                    headers: {
+                        "Authorization": `Bearer ${apiKey}`,
+                        "Content-Type": "application/json"
+                    }
+                });
+
+                return response.data;
+            }
+        }
+    };
+}
+
 module.exports = {
     sanitizeEmailInput,
-    sanitizeEmailAddress
+    sanitizeEmailAddress,
+    getResendClient
 };

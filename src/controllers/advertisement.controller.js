@@ -63,6 +63,30 @@ async function updateExpiredAds() {
     }
 }
 
+/**
+ * Broadcast real-time advertisement changes to all connected mobile clients
+ */
+function broadcastAdChange(req, action, ad = null) {
+    try {
+        const io = req?.app?.get("io");
+        if (io) {
+            io.emit("advertisement-updated", {
+                action,
+                ad: ad ? {
+                    _id: ad._id,
+                    imageUrl: ad.imageUrl,
+                    destinationUrl: ad.destinationUrl,
+                    priority: ad.priority,
+                    status: ad.status
+                } : null,
+                timestamp: new Date().toISOString()
+            });
+        }
+    } catch (err) {
+        console.error("Failed to broadcast ad change:", err.message);
+    }
+}
+
 // ─────────────────────────────────────────────────────────────
 // 📱 CLIENT / MOBILE APP ENDPOINTS
 // ─────────────────────────────────────────────────────────────
@@ -274,6 +298,9 @@ exports.createAdvertisement = async (req, res) => {
             createdBy: req.user ? req.user._id : null
         });
 
+        // Broadcast real-time change to mobile clients
+        broadcastAdChange(req, "CREATED", newAd);
+
         return res.status(201).json({
             success: true,
             message: "Advertisement created successfully.",
@@ -366,6 +393,9 @@ exports.updateAdvertisement = async (req, res) => {
 
         await ad.save();
 
+        // Broadcast real-time change to mobile clients
+        broadcastAdChange(req, "UPDATED", ad);
+
         return res.status(200).json({
             success: true,
             message: "Advertisement updated successfully.",
@@ -402,6 +432,9 @@ exports.toggleAdStatus = async (req, res) => {
         ad.status = status || (ad.status === "ACTIVE" ? "PAUSED" : "ACTIVE");
         await ad.save();
 
+        // Broadcast real-time status change to mobile clients
+        broadcastAdChange(req, ad.status, ad);
+
         return res.status(200).json({
             success: true,
             message: `Advertisement status changed to ${ad.status}.`,
@@ -429,6 +462,9 @@ exports.deleteAdvertisement = async (req, res) => {
         if (!ad) {
             return res.status(404).json({ success: false, message: "Advertisement not found." });
         }
+
+        // Broadcast real-time deletion to mobile clients
+        broadcastAdChange(req, "DELETED", { _id: id, status: "PAUSED" });
 
         return res.status(200).json({
             success: true,
