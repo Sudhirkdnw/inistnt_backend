@@ -42,8 +42,8 @@ function generateEmailActionToken() {
  */
 async function notifyAdminsNewVerification(verificationDoc, userDoc) {
     try {
-        const backendUrl = process.env.API_BASE_URL || process.env.BACKEND_URL || "http://localhost:5000";
-        const adminUrl = process.env.ADMIN_URL || "http://localhost:5173";
+        const backendUrl = process.env.API_BASE_URL || process.env.BACKEND_URL || getSetting("backend_url", "https://api.hykee.in") || "https://api.hykee.in";
+        const adminUrl = process.env.ADMIN_URL || getSetting("admin_url", "https://adminfz.vercel.app") || "https://adminfz.vercel.app";
 
         const approveUrl = `${backendUrl}/api/verifications/email-action/approve?token=${verificationDoc.emailActionToken}&reqId=${verificationDoc._id}`;
         const rejectUrl = `${backendUrl}/api/verifications/email-action/reject-form?token=${verificationDoc.emailActionToken}&reqId=${verificationDoc._id}`;
@@ -836,7 +836,7 @@ function renderEmailActionResponsePage({ title, status, heading, message, detail
             </div>
             ` : ''}
 
-            <a href="${process.env.ADMIN_URL || '#'}" class="btn">Open Admin Dashboard</a>
+            <a href="${process.env.ADMIN_URL || getSetting("admin_url", "https://adminfz.vercel.app") || "https://adminfz.vercel.app"}/verifications" class="btn">Open Admin Dashboard</a>
         </div>
     </body>
     </html>
@@ -844,7 +844,7 @@ function renderEmailActionResponsePage({ title, status, heading, message, detail
 }
 
 function renderRejectionFormPage(request, token) {
-    const backendUrl = process.env.API_BASE_URL || process.env.BACKEND_URL || "";
+    const backendUrl = process.env.API_BASE_URL || process.env.BACKEND_URL || getSetting("backend_url", "https://api.hykee.in") || "https://api.hykee.in";
 
     return `
     <!DOCTYPE html>

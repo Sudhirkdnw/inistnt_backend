@@ -1,10 +1,13 @@
 const { z } = require("zod");
 
+// Helper to convert empty strings or whitespace to undefined so .optional() works properly
+const emptyToUndefined = (val) => (typeof val === "string" && val.trim() === "" ? undefined : val);
+
 const sendOtpSchema = {
     body: z.object({
         email: z.string({
-            required_error: "Email is required"
-        }).email("Invalid email format").trim().toLowerCase()
+            required_error: "College email address is required"
+        }).email("Please enter a valid email address (e.g. student@college.edu.in)").trim().toLowerCase()
     })
 };
 
@@ -16,21 +19,29 @@ const registerSchema = {
         password: z.string({
             required_error: "Password is required"
         }).min(6, "Password must be at least 6 characters"),
-        email: z.string().email("Invalid email format").trim().toLowerCase().optional(),
-        fullName: z.string().trim().optional(),
+        email: z.preprocess(
+            emptyToUndefined,
+            z.string().email("Please enter a valid email address").trim().toLowerCase().optional()
+        ),
+        fullName: z.preprocess(
+            emptyToUndefined,
+            z.string().trim().optional()
+        ),
         collegeName: z.string({
-            required_error: "College/University name is required"
+            required_error: "Please select your College/University"
         }).trim(),
-        collegeId: z.string().optional(),
-        // @deprecated — kept for backward-compat; ignore on server but don't reject
-        university: z.string().trim().optional(),
-        universityId: z.string().trim().optional(),
-        department: z.string().trim().optional(),
-        branch: z.string().trim().optional(),
-        semester: z.union([z.string(), z.number()]).optional(),
-        collegeEmail: z.string().email("Invalid email format").trim().toLowerCase().optional(),
+        collegeId: z.preprocess(emptyToUndefined, z.string().optional()),
+        university: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+        universityId: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+        department: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+        branch: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+        semester: z.preprocess(emptyToUndefined, z.union([z.string(), z.number()]).optional()),
+        collegeEmail: z.preprocess(
+            emptyToUndefined,
+            z.string().email("Please enter a valid college email address").trim().toLowerCase().optional()
+        ),
         verificationMethod: z.enum(["EMAIL", "ID_CARD"]).optional(),
-        otp: z.string().trim().optional()
+        otp: z.preprocess(emptyToUndefined, z.string().trim().optional())
     })
 };
 

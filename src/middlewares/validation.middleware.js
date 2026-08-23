@@ -23,8 +23,11 @@ const validate = (schemas) => {
                     field: err.path.join('.'),
                     message: err.message
                 }));
+
+                const primaryMessage = formattedErrors.map(e => e.message).filter(Boolean).join(', ') || "Validation failed";
+
                 return res.status(400).json({
-                    message: "Validation failed",
+                    message: primaryMessage,
                     errors: formattedErrors
                 });
             }

@@ -15,6 +15,8 @@ const syncSettings = async () => {
             { key: 'support_phone', value: '+91 70707 99200', description: 'Support contact number', category: 'General' },
             { key: 'company_name', value: 'Hykee', description: 'Legal company name', category: 'General' },
             { key: 'company_address', value: 'Greater Noida', description: 'Business address', category: 'General' },
+            { key: 'backend_url', value: 'https://api.hykee.in', description: 'Production API Base URL', category: 'General' },
+            { key: 'admin_url', value: 'https://adminfz.vercel.app', description: 'Production Admin Panel URL', category: 'General' },
             { key: 'default_language', value: 'en', description: 'System default language', category: 'General' },
             { key: 'default_currency', value: 'INR', description: 'Platform currency code', category: 'General' },
             { key: 'timezone', value: 'UTC', description: 'System default timezone', category: 'General' },
