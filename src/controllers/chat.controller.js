@@ -53,10 +53,12 @@ async function getConversations(req, res) {
     try {
         const userId = req.user._id;
         const conversations = await Conversation.find({ participants: userId })
-            .populate("participants", "username fullName avatar")
+            .populate("participants", "username fullName avatar isVerified verificationStatus role")
+            .populate("communityId", "name icon slug description memberCount")
+            .populate("teamId", "title category maxMembers currentMemberCount")
             .populate({
                 path: "lastMessage",
-                populate: { path: "sender", select: "username" }
+                populate: { path: "sender", select: "username fullName avatar" }
             })
             .sort({ updatedAt: -1 })
             .lean();

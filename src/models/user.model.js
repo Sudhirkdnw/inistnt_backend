@@ -95,7 +95,8 @@ const userSchema = new mongoose.Schema({
         timestamp: { type: Date, default: Date.now },
         isSuspicious: { type: Boolean, default: false }
     }],
-    // College verification fields
+    // ── UNIFIED INSTITUTION FIELD (source of truth) ────────────────────────
+    // Both colleges AND universities go here — IITs, NITs, DU, Galgotias, etc.
     collegeName: {
         type: String,
         trim: true,
@@ -110,15 +111,17 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: ""
     },
+    // @deprecated — kept for backward-compat migration only; use collegeName instead
     university: {
         type: String,
         trim: true,
         default: ""
     },
+    // @deprecated — no longer actively referenced; university collection is read-only
     universityId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "University",
-        default: null
+        type: String,
+        trim: true,
+        default: ""
     },
     department: {
         type: String,

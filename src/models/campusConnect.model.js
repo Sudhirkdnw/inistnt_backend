@@ -70,6 +70,7 @@ const campusConnectSchema = new mongoose.Schema({
     preferredSemesters: [{ type: Number }],
     preferredSkills: [{ type: String, trim: true }],
     preferredInterests: [{ type: String, trim: true }],
+    preferredGoals: [{ type: String, trim: true }],
     preferredCommunities: [{ type: String, trim: true }],
     // ── Visibility & Privacy ──────────────────────────────────────────────────
     verifiedOnly: {

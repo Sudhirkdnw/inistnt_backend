@@ -117,7 +117,7 @@ exports.updateAdminTeamStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid status value' });
     }
 
-    const team = await Team.findByIdAndUpdate(id, { status }, { new: true });
+    const team = await Team.findByIdAndUpdate(id, { status }, { returnDocument: 'after' });
     if (!team) {
       return res.status(404).json({ success: false, message: 'Team not found' });
     }

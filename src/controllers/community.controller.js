@@ -6,13 +6,38 @@ const Message = require("../models/message.model");
 const { uploadImage } = require("../utils/cloudinary");
 const { isUserActiveInConversation } = require("../utils/presence");
 
+// ── Helper to generate URL-safe slug ──────────────────────────────────────────
+function generateSlug(text) {
+    return text
+        .toString()
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/[^\w\-]+/g, '')
+        .replace(/\-\-+/g, '-')
+        .replace(/^-+/, '')
+        .replace(/-+$/, '');
+}
+
 // ── GET /api/communities/home — Fast lightweight list for home slider ─────────
 exports.getHomeCommunities = async (req, res) => {
     try {
         const userId = req.user ? req.user._id : null;
+        const userCollege = (req.user && req.user.collegeName) ? req.user.collegeName.trim() : (req.query.collegeName ? req.query.collegeName.trim() : "");
 
-        const communities = await Community.find({ status: "ACTIVE" })
-            .select("name slug shortDescription category icon coverPhoto memberCount isPinned isFeatured conversation")
+        const query = { status: "ACTIVE" };
+
+        if (userCollege) {
+            const escaped = userCollege.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            query.$or = [
+                { collegeName: userCollege },
+                { collegeName: new RegExp(`^${escaped}$`, 'i') },
+                { isGlobal: true }
+            ];
+        }
+
+        const communities = await Community.find(query)
+            .select("name slug shortDescription category icon coverPhoto memberCount isPinned isFeatured collegeName isGlobal conversation")
             .sort({ isPinned: -1, isFeatured: -1, memberCount: -1, createdAt: -1 })
             .limit(10)
             .lean();
@@ -45,30 +70,46 @@ exports.getHomeCommunities = async (req, res) => {
 exports.getCommunities = async (req, res) => {
     try {
         const userId = req.user ? req.user._id : null;
+        const userCollege = (req.user && req.user.collegeName) ? req.user.collegeName.trim() : (req.query.collegeName ? req.query.collegeName.trim() : "");
         const { search, category, page = 1, limit = 15 } = req.query;
 
-        const query = { status: "ACTIVE" };
+        const conditions = [{ status: "ACTIVE" }];
+
+        if (userCollege) {
+            const escaped = userCollege.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            conditions.push({
+                $or: [
+                    { collegeName: userCollege },
+                    { collegeName: new RegExp(`^${escaped}$`, 'i') },
+                    { isGlobal: true }
+                ]
+            });
+        }
 
         if (category && category !== "All" && category.trim()) {
-            query.category = category.trim();
+            conditions.push({ category: category.trim() });
         }
 
         if (search && search.trim()) {
-            const regex = new RegExp(search.trim(), "i");
-            query.$or = [
-                { name: regex },
-                { shortDescription: regex },
-                { description: regex },
-                { category: regex }
-            ];
+            const regex = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "i");
+            conditions.push({
+                $or: [
+                    { name: regex },
+                    { shortDescription: regex },
+                    { description: regex },
+                    { category: regex }
+                ]
+            });
         }
+
+        const query = conditions.length === 1 ? conditions[0] : { $and: conditions };
 
         const skip = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
         const take = Math.min(50, Math.max(1, parseInt(limit)));
 
         const [communities, total] = await Promise.all([
             Community.find(query)
-                .select("name slug shortDescription category icon coverPhoto memberCount isPinned isFeatured conversation createdAt")
+                .select("name slug shortDescription category icon coverPhoto memberCount isPinned isFeatured collegeName isGlobal conversation createdAt")
                 .sort({ isPinned: -1, isFeatured: -1, memberCount: -1, createdAt: -1 })
                 .skip(skip)
                 .limit(take)
@@ -105,6 +146,95 @@ exports.getCommunities = async (req, res) => {
         });
     } catch (error) {
         console.error("Error in getCommunities:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ── POST /api/communities — User creates a new community for their college ─────
+exports.createCommunity = async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const userCollege = req.user.collegeName || req.body.collegeName || "";
+        const collegeId = req.user.collegeId || null;
+
+        const {
+            name,
+            shortDescription = "",
+            description = "",
+            category = "Technology",
+            rules = ""
+        } = req.body;
+
+        if (!name || !name.trim()) {
+            return res.status(400).json({ success: false, message: "Community name is required." });
+        }
+
+        const cleanName = name.trim();
+        const slugBase = generateSlug(cleanName);
+        const collegeSuffix = userCollege ? ('-' + generateSlug(userCollege).slice(0, 15)) : '';
+        let slug = `${slugBase}${collegeSuffix}`;
+
+        const existing = await Community.findOne({ slug });
+        if (existing) {
+            slug = `${slug}-${Date.now().toString(36)}`;
+        }
+
+        let iconUrl = req.body.icon || "";
+        let coverPhotoUrl = req.body.coverPhoto || "";
+
+        if (req.files?.icon?.[0]) {
+            const uploaded = await uploadImage(req.files.icon[0].buffer, "communities/icons");
+            iconUrl = uploaded.secure_url || uploaded.url;
+        }
+        if (req.files?.coverPhoto?.[0]) {
+            const uploaded = await uploadImage(req.files.coverPhoto[0].buffer, "communities/covers");
+            coverPhotoUrl = uploaded.secure_url || uploaded.url;
+        }
+
+        const community = await Community.create({
+            name: cleanName,
+            slug,
+            shortDescription: shortDescription.trim(),
+            description: description.trim(),
+            category: category.trim(),
+            collegeName: userCollege,
+            collegeId,
+            icon: iconUrl,
+            coverPhoto: coverPhotoUrl,
+            rules: rules.trim(),
+            status: "ACTIVE",
+            memberCount: 1,
+            createdBy: userId,
+            moderators: [userId]
+        });
+
+        // Create linked group conversation
+        const conv = await Conversation.create({
+            type: "community",
+            name: community.name,
+            communityId: community._id,
+            participants: [userId]
+        });
+
+        community.conversation = conv._id;
+        await community.save();
+
+        // Add creator as owner in CommunityMember
+        await CommunityMember.create({
+            community: community._id,
+            user: userId,
+            role: "owner",
+            status: "active",
+            joinedAt: new Date()
+        });
+
+        res.status(201).json({
+            success: true,
+            message: `Community "${community.name}" created successfully for ${userCollege || 'your campus'}!`,
+            community
+        });
+    } catch (error) {
+        console.error("Error in createCommunity:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -160,10 +290,20 @@ exports.getCommunityDetails = async (req, res) => {
             await Community.findByIdAndUpdate(community._id, { conversation: conversationId });
         }
 
+        // Get real member count from database
+        const actualMemberCount = await CommunityMember.countDocuments({
+            community: community._id,
+            status: "active"
+        });
+        if (community.memberCount !== actualMemberCount) {
+            Community.findByIdAndUpdate(community._id, { memberCount: actualMemberCount }).exec().catch(() => {});
+        }
+
         res.status(200).json({
             success: true,
             community: {
                 ...community,
+                memberCount: actualMemberCount,
                 conversation: conversationId,
                 isJoined,
                 userRole,

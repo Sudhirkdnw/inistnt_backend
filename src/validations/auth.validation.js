@@ -22,8 +22,9 @@ const registerSchema = {
             required_error: "College/University name is required"
         }).trim(),
         collegeId: z.string().optional(),
+        // @deprecated — kept for backward-compat; ignore on server but don't reject
         university: z.string().trim().optional(),
-        universityId: z.string().optional(),
+        universityId: z.string().trim().optional(),
         department: z.string().trim().optional(),
         branch: z.string().trim().optional(),
         semester: z.union([z.string(), z.number()]).optional(),

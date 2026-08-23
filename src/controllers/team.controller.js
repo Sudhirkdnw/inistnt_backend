@@ -635,7 +635,7 @@ exports.respondToApplication = async (req, res) => {
       await TeamMember.findOneAndUpdate(
         { team: team._id, user: application.applicant._id },
         { role: 'MEMBER', status: 'ACTIVE', joinedAt: new Date() },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
 
       // 3. Increment team member count

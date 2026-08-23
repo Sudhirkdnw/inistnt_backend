@@ -30,6 +30,20 @@ const communitySchema = new mongoose.Schema({
         default: "Technology",
         trim: true
     },
+    collegeName: {
+        type: String,
+        trim: true,
+        default: ""
+    },
+    collegeId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "College",
+        default: null
+    },
+    isGlobal: {
+        type: Boolean,
+        default: false
+    },
     icon: {
         type: String,
         default: ""
@@ -78,6 +92,7 @@ const communitySchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // ── Indexes ─────────────────────────────────────────────
+communitySchema.index({ collegeName: 1, status: 1 });
 communitySchema.index({ status: 1, isPinned: -1, isFeatured: -1, memberCount: -1 });
 communitySchema.index({ category: 1, status: 1 });
 communitySchema.index({ name: "text", shortDescription: "text", description: "text" });

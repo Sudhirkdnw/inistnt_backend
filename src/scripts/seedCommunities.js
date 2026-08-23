@@ -23,7 +23,7 @@ const DEFAULT_COMMUNITIES = [
         rules: "1. Be respectful and collaborative.\n2. Share code and research with proper attribution.\n3. No spam or self-promotions without context.",
         isPinned: true,
         isFeatured: true,
-        memberCount: 1240,
+        memberCount: 1,
         status: "ACTIVE"
     },
     {
@@ -37,7 +37,7 @@ const DEFAULT_COMMUNITIES = [
         rules: "1. Post LeetCode/Codeforces solutions with explanations.\n2. Help juniors debug logic politely.\n3. Discuss contest strategies constructively.",
         isPinned: true,
         isFeatured: true,
-        memberCount: 980,
+        memberCount: 1,
         status: "ACTIVE"
     },
     {
@@ -51,7 +51,7 @@ const DEFAULT_COMMUNITIES = [
         rules: "1. Constructive feedback only.\n2. Protect each other's intellectual property.\n3. Transparent collaboration.",
         isPinned: false,
         isFeatured: true,
-        memberCount: 750,
+        memberCount: 1,
         status: "ACTIVE"
     },
     {
@@ -65,7 +65,7 @@ const DEFAULT_COMMUNITIES = [
         rules: "1. Match with teammates based on skills.\n2. Practice open-source first approach.\n3. Celebrate each other's wins.",
         isPinned: false,
         isFeatured: true,
-        memberCount: 1120,
+        memberCount: 1,
         status: "ACTIVE"
     },
     {
@@ -79,7 +79,7 @@ const DEFAULT_COMMUNITIES = [
         rules: "1. Strictly no financial advice or crypto shilling.\n2. Technical discussions and architecture only.",
         isPinned: false,
         isFeatured: false,
-        memberCount: 640,
+        memberCount: 1,
         status: "ACTIVE"
     },
     {
@@ -93,7 +93,7 @@ const DEFAULT_COMMUNITIES = [
         rules: "1. Positive gaming culture.\n2. No toxic behavior or abuse.\n3. Share devlogs and gameplay highlights.",
         isPinned: false,
         isFeatured: false,
-        memberCount: 890,
+        memberCount: 1,
         status: "ACTIVE"
     }
 ];
@@ -125,6 +125,15 @@ async function seed() {
 
                 comm.conversation = conv._id;
                 await comm.save();
+
+                if (adminId) {
+                    await CommunityMember.create({
+                        community: comm._id,
+                        user: adminId,
+                        role: "owner",
+                        status: "active"
+                    });
+                }
                 console.log(`✅ Seeded community: ${comm.name}`);
             } else {
                 if (!existing.conversation) {

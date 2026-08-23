@@ -768,6 +768,7 @@ async function getPreferences(req, res) {
                     preferredSemesters: [],
                     preferredSkills: [],
                     preferredInterests: [],
+                    preferredGoals: [],
                     preferredCommunities: [],
                     verifiedOnly: false,
                     allowConnectionRequests: true,
@@ -794,7 +795,7 @@ async function updatePreferences(req, res) {
         const {
             intents, locationFilter, isActive,
             preferredBranches, preferredSemesters, preferredSkills,
-            preferredInterests, preferredCommunities,
+            preferredInterests, preferredGoals, preferredCommunities,
             verifiedOnly, allowConnectionRequests, allowMessagesAfterConnect,
             showOnlineStatus, hideFromSuggestions, aiPriorities,
             mentorMode, mentorTags
@@ -817,6 +818,7 @@ async function updatePreferences(req, res) {
         if (preferredSemesters !== undefined) profile.preferredSemesters = preferredSemesters;
         if (preferredSkills !== undefined) profile.preferredSkills = preferredSkills;
         if (preferredInterests !== undefined) profile.preferredInterests = preferredInterests;
+        if (preferredGoals !== undefined) profile.preferredGoals = preferredGoals;
         if (preferredCommunities !== undefined) profile.preferredCommunities = preferredCommunities;
 
         // Visibility & privacy

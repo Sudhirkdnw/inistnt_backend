@@ -269,7 +269,7 @@ exports.deleteCommunity = async (req, res) => {
         }
 
         // Default: Archive
-        const community = await Community.findByIdAndUpdate(id, { status: "ARCHIVED" }, { new: true });
+        const community = await Community.findByIdAndUpdate(id, { status: "ARCHIVED" }, { returnDocument: 'after' });
         if (!community) return res.status(404).json({ success: false, message: "Community not found." });
 
         res.status(200).json({
@@ -343,7 +343,7 @@ exports.updateMemberRole = async (req, res) => {
         const member = await CommunityMember.findOneAndUpdate(
             { community: id, user: userId },
             { role },
-            { new: true }
+            { returnDocument: 'after' }
         ).populate("user", "username fullName email avatar");
 
         if (!member) {

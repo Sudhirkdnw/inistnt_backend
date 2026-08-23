@@ -7,11 +7,19 @@ const collegeSchema = new mongoose.Schema({
         trim: true,
         unique: true
     },
+    // Admin-only metadata — not shown to users; kept for internal grouping only
+    // @deprecated-link — University FK no longer required or enforced
     university: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "University",
         required: false,
         default: null
+    },
+    // Admin metadata: type of institution (optional, user-facing label is always "College")
+    instituteType: {
+        type: String,
+        enum: ["college", "university", "institute", "deemed", "autonomous", "other"],
+        default: "college"
     },
     code: {
         type: String,
@@ -34,7 +42,8 @@ const collegeSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
-collegeSchema.index({ university: 1, isActive: 1 });
+collegeSchema.index({ isActive: 1, name: 1 });
 collegeSchema.index({ name: 1, isActive: 1 });
+collegeSchema.index({ name: "text", city: "text", state: "text" });
 
 module.exports = mongoose.model("College", collegeSchema);

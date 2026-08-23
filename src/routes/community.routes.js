@@ -9,6 +9,7 @@ const communityCtrl = require("../controllers/community.controller");
 // Discovery & Info
 router.get("/home", softAuthMiddleware, communityCtrl.getHomeCommunities);
 router.get("/", softAuthMiddleware, communityCtrl.getCommunities);
+router.post("/", authMiddleware, upload.fields([{ name: 'icon', maxCount: 1 }, { name: 'coverPhoto', maxCount: 1 }]), communityCtrl.createCommunity);
 router.get("/:idOrSlug", softAuthMiddleware, communityCtrl.getCommunityDetails);
 
 // Membership actions (Require Auth)

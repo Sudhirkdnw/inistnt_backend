@@ -1,16 +1,29 @@
+// No longer importing University model for user-facing queries
+// University model kept for legacy/admin read-only access only
 const University = require("../models/university.model");
 const College = require("../models/college.model");
 const Department = require("../models/department.model");
 const Branch = require("../models/branch.model");
 const mongoose = require("mongoose");
 
-// ─── PUBLIC AUTOCOMPLETE & DIRECTORY ENDPOINTS ───────────────────────────────────
+// ─── UNIFIED INSTITUTION SEARCH ─────────────────────────────────────────────
+// All institutions (colleges, universities, IITs, NITs, etc.) are in the College collection.
+// The "University" collection is legacy/admin-only and NOT used for user-facing dropdowns.
 
 // GET /api/hierarchy/universities?q=&limit=
+// @alias — now returns from College collection (unified institution list)
 exports.getUniversities = async (req, res) => {
+    // Redirect to unified College search — same as getCampuses
+    return exports.getCampuses(req, res);
+};
+
+// GET /api/hierarchy/campuses?q=&limit=  (also aliased as /colleges)
+// @unified — searches College collection only, no University dependency
+exports.getCampuses = async (req, res) => {
     try {
         const query = (req.query.q || "").trim();
         const limit = Math.min(parseInt(req.query.limit) || 200, 500);
+
         const filter = { isActive: true };
 
         if (query) {
@@ -19,77 +32,24 @@ exports.getUniversities = async (req, res) => {
             filter.$or = [
                 { name: searchRegex },
                 { city: searchRegex },
-                { state: searchRegex }
-            ];
-        }
-
-        const list = await University.find(filter)
-            .select("name city state isActive")
-            .sort({ name: 1 })
-            .limit(limit)
-            .lean();
-
-        res.status(200).json({ success: true, list });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-};
-
-// GET /api/hierarchy/campuses?q=&universityId= or /api/hierarchy/universities/:universityId/campuses
-exports.getCampuses = async (req, res) => {
-    try {
-        const query = (req.query.q || "").trim();
-        const rawUni = req.params.universityId || req.query.universityId || req.query.university;
-        const limit = Math.min(parseInt(req.query.limit) || 200, 500);
-        const filter = { isActive: true };
-
-        if (rawUni && rawUni.trim()) {
-            const uniTrimmed = rawUni.trim();
-            if (mongoose.Types.ObjectId.isValid(uniTrimmed)) {
-                filter.university = new mongoose.Types.ObjectId(uniTrimmed);
-            } else {
-                // If passed as name, find the university first
-                const uniDoc = await University.findOne({
-                    name: new RegExp(`^${uniTrimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
-                    isActive: true
-                }).select("_id");
-                if (uniDoc) {
-                    filter.university = uniDoc._id;
-                } else {
-                    return res.status(200).json({ success: true, list: [] });
-                }
-            }
-        }
-
-        if (query) {
-            const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const searchRegex = new RegExp(escaped, "i");
-            const searchConditions = [
-                { name: searchRegex },
-                { city: searchRegex },
                 { state: searchRegex },
                 { code: searchRegex }
             ];
-            if (filter.university) {
-                filter.$and = [{ university: filter.university }, { $or: searchConditions }];
-                delete filter.university;
-            } else {
-                filter.$or = searchConditions;
-            }
         }
 
         const list = await College.find(filter)
-            .select("name code city state university isActive")
-            .populate("university", "name _id")
+            .select("name code city state instituteType isActive")
             .sort({ name: 1 })
             .limit(limit)
             .lean();
 
         res.status(200).json({ success: true, list });
     } catch (err) {
+        console.error("Error in getCampuses:", err);
         res.status(500).json({ message: err.message });
     }
 };
+
 
 // GET /api/hierarchy/departments?q=
 exports.getDepartments = async (req, res) => {
