@@ -7,6 +7,7 @@ const ccAdmin = require("../controllers/adminCampusConnect.controller");
 const collegeHierarchyAdmin = require("../controllers/collegeHierarchy.controller");
 const adminCommunityCtrl = require("../controllers/adminCommunity.controller");
 const adminTeamCtrl = require("../controllers/adminTeam.controller");
+const adCtrl = require("../controllers/advertisement.controller");
 
 const {
     getDashboard, getAllUsers, getUserDetails, toggleBan, changeRole, deleteUser, restoreUser,
@@ -248,5 +249,12 @@ router.get("/teams", requirePermission("userManagement", "view"), adminTeamCtrl.
 router.get("/teams/:id", requirePermission("userManagement", "view"), adminTeamCtrl.getAdminTeamDetails);
 router.put("/teams/:id/status", requirePermission("userManagement", "update"), adminTeamCtrl.updateAdminTeamStatus);
 router.delete("/teams/:id", requirePermission("userManagement", "delete"), adminTeamCtrl.deleteAdminTeam);
+
+// Advertisements Management CRUD
+router.get("/advertisements", adCtrl.getAdminAdvertisements);
+router.post("/advertisements", upload.single("image"), adCtrl.createAdvertisement);
+router.put("/advertisements/:id", upload.single("image"), adCtrl.updateAdvertisement);
+router.patch("/advertisements/:id/status", adCtrl.toggleAdStatus);
+router.delete("/advertisements/:id", adCtrl.deleteAdvertisement);
 
 module.exports = router;

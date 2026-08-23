@@ -19,7 +19,7 @@ function generateSlug(text) {
         .replace(/-+$/, '');
 }
 
-// ── GET /api/communities/home — Fast lightweight list for home slider ─────────
+// ── GET /api/communities/home — Fast lightweight list for home/explore slider ──
 exports.getHomeCommunities = async (req, res) => {
     try {
         const userId = req.user ? req.user._id : null;
@@ -32,14 +32,17 @@ exports.getHomeCommunities = async (req, res) => {
             query.$or = [
                 { collegeName: userCollege },
                 { collegeName: new RegExp(`^${escaped}$`, 'i') },
-                { isGlobal: true }
+                { collegeName: new RegExp(`${escaped}`, 'i') }
             ];
+        } else {
+            // If user has not set a college, only show global or fallback
+            query.$or = [{ isGlobal: true }, { collegeName: { $exists: false } }, { collegeName: "" }];
         }
 
         const communities = await Community.find(query)
             .select("name slug shortDescription category icon coverPhoto memberCount isPinned isFeatured collegeName isGlobal conversation")
             .sort({ isPinned: -1, isFeatured: -1, memberCount: -1, createdAt: -1 })
-            .limit(10)
+            .limit(12)
             .lean();
 
         let joinedSet = new Set();
@@ -56,7 +59,8 @@ exports.getHomeCommunities = async (req, res) => {
 
         const result = communities.map(c => ({
             ...c,
-            isJoined: joinedSet.has(c._id.toString())
+            isJoined: joinedSet.has(c._id.toString()),
+            isMember: joinedSet.has(c._id.toString())
         }));
 
         res.status(200).json({ success: true, communities: result });

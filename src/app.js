@@ -22,6 +22,7 @@ const postRoutes = require('./routes/post.routes');
 const collegeHierarchyRoutes = require('./routes/collegeHierarchy.routes');
 const communityRoutes = require('./routes/community.routes');
 const teamRoutes = require('./routes/team.routes');
+const advertisementRoutes = require('./routes/advertisement.routes');
 const cors = require('cors');
 
 const app = express();
@@ -133,6 +134,7 @@ app.use("/api/colleges", collegeRoutes);
 app.use("/api/hierarchy", collegeHierarchyRoutes);
 app.use("/api/communities", rateLimiter({ windowMs: 60 * 1000, max: 120, prefix: 'communities' }), communityRoutes);
 app.use("/api/teams", rateLimiter({ windowMs: 60 * 1000, max: 120, prefix: 'teams' }), teamRoutes);
+app.use("/api/advertisements", advertisementRoutes);
 app.use("/api/dashboard", rateLimiter({ windowMs: 60 * 1000, max: 60, prefix: 'dashboard' }), dashboardRoutes);
 
 app.get("/api/health", (req, res) => {

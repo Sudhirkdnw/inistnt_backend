@@ -214,31 +214,21 @@ exports.adminGetCampuses = async (req, res) => {
 
 exports.adminCreateCampus = async (req, res) => {
     try {
-        const { name, city, state, code, isActive, university, universityId } = req.body;
-        if (!name || !name.trim()) return res.status(400).json({ message: "College/Campus name is required" });
-
-        let resolvedUni = null;
-        const targetUni = universityId || university;
-        if (targetUni && mongoose.Types.ObjectId.isValid(targetUni)) {
-            resolvedUni = targetUni;
-        } else if (targetUni && typeof targetUni === "string" && targetUni.trim()) {
-            const foundUni = await University.findOne({ name: new RegExp(`^${targetUni.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
-            if (foundUni) resolvedUni = foundUni._id;
-        }
+        const { name, city, state, code, isActive, instituteType } = req.body;
+        if (!name || !name.trim()) return res.status(400).json({ message: "College/Institution name is required" });
 
         const item = await College.create({
             name: name.trim(),
-            university: resolvedUni,
+            instituteType: instituteType || "college",
             code: code ? code.trim() : "",
             city: city ? city.trim() : "",
             state: state ? state.trim() : "",
             isActive: isActive !== false
         });
 
-        const populated = await College.findById(item._id).populate("university", "name _id");
-        res.status(201).json({ success: true, message: "College/Campus created successfully", item: populated });
+        res.status(201).json({ success: true, message: "Institution added to unified college list", item });
     } catch (err) {
-        if (err.code === 11000) return res.status(400).json({ message: "College with this name already exists" });
+        if (err.code === 11000) return res.status(400).json({ message: "An institution with this name already exists" });
         res.status(500).json({ message: err.message });
     }
 };
@@ -246,7 +236,7 @@ exports.adminCreateCampus = async (req, res) => {
 exports.adminUpdateCampus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, city, state, code, isActive, university, universityId } = req.body;
+        const { name, city, state, code, isActive, instituteType } = req.body;
 
         const updateData = {
             name: name ? name.trim() : undefined,
@@ -256,27 +246,17 @@ exports.adminUpdateCampus = async (req, res) => {
             isActive
         };
 
-        const targetUni = universityId !== undefined ? universityId : university;
-        if (targetUni !== undefined) {
-            if (!targetUni || targetUni === "none" || targetUni === "null") {
-                updateData.university = null;
-            } else if (mongoose.Types.ObjectId.isValid(targetUni)) {
-                updateData.university = targetUni;
-            } else if (typeof targetUni === "string" && targetUni.trim()) {
-                const foundUni = await University.findOne({ name: new RegExp(`^${targetUni.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
-                if (foundUni) updateData.university = foundUni._id;
-            }
-        }
+        if (instituteType) updateData.instituteType = instituteType;
 
         const item = await College.findByIdAndUpdate(
             id,
             updateData,
             { returnDocument: 'after' }
-        ).populate("university", "name _id");
+        );
 
-        res.status(200).json({ success: true, message: "College/Campus updated successfully", item });
+        res.status(200).json({ success: true, message: "Institution updated successfully", item });
     } catch (err) {
-        if (err.code === 11000) return res.status(400).json({ message: "College with this name already exists" });
+        if (err.code === 11000) return res.status(400).json({ message: "An institution with this name already exists" });
         res.status(500).json({ message: err.message });
     }
 };
@@ -501,38 +481,16 @@ exports.adminBulkUploadCSV = async (req, res) => {
                 ? (rowData.isactive.toLowerCase() !== "false" && rowData.isactive !== "0") 
                 : true;
 
-            if (rowType.includes("uni")) {
-                uniOps.push({
-                    updateOne: {
-                        filter: { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
-                        update: {
-                            $set: {
-                                name,
-                                city: rowData.city || "",
-                                state: rowData.state || "",
-                                isActive
-                            }
-                        },
-                        upsert: true
-                    }
-                });
-            } else if (rowType.includes("camp") || rowType.includes("coll") || rowType.includes("inst")) {
-                const uniName = rowData.university || rowData.universityname || rowData.univ || "";
-                let uniId = null;
-                if (uniName) {
-                    if (mongoose.Types.ObjectId.isValid(uniName)) {
-                        uniId = new mongoose.Types.ObjectId(uniName);
-                    }
-                }
-
+            if (rowType.includes("uni") || rowType.includes("camp") || rowType.includes("coll") || rowType.includes("inst")) {
+                const inferredType = rowData.institutetype || rowData.type || (rowType.includes("uni") ? "university" : rowType.includes("inst") ? "institute" : "college");
                 const collegeSet = {
                     name,
+                    instituteType: inferredType,
                     code: rowData.code || "",
                     city: rowData.city || "",
                     state: rowData.state || "",
                     isActive
                 };
-                if (uniId) collegeSet.university = uniId;
 
                 collegeOps.push({
                     updateOne: {
@@ -576,8 +534,7 @@ exports.adminBulkUploadCSV = async (req, res) => {
         }
 
         // Execute bulkWrite in parallel for each category
-        const [uniRes, collegeRes, deptRes, branchRes] = await Promise.all([
-            uniOps.length > 0 ? University.bulkWrite(uniOps, { ordered: false }) : null,
+        const [collegeRes, deptRes, branchRes] = await Promise.all([
             collegeOps.length > 0 ? College.bulkWrite(collegeOps, { ordered: false }) : null,
             deptOps.length > 0 ? Department.bulkWrite(deptOps, { ordered: false }) : null,
             branchOps.length > 0 ? Branch.bulkWrite(branchOps, { ordered: false }) : null
@@ -588,7 +545,7 @@ exports.adminBulkUploadCSV = async (req, res) => {
             return (resObj.upsertedCount || 0) + (resObj.modifiedCount || 0) + (resObj.matchedCount || 0);
         };
 
-        importedCount = calcUpserts(uniRes) + calcUpserts(collegeRes) + calcUpserts(deptRes) + calcUpserts(branchRes);
+        importedCount = calcUpserts(collegeRes) + calcUpserts(deptRes) + calcUpserts(branchRes);
 
         res.status(200).json({
             success: true,
@@ -596,7 +553,6 @@ exports.adminBulkUploadCSV = async (req, res) => {
             importedCount,
             skippedCount,
             breakdown: {
-                universities: calcUpserts(uniRes),
                 colleges: calcUpserts(collegeRes),
                 departments: calcUpserts(deptRes),
                 branches: calcUpserts(branchRes)
@@ -626,21 +582,13 @@ exports.adminExportCSV = async (req, res) => {
             return s;
         };
 
-        if (category === "universities" || category === "university") {
-            const list = await University.find().sort({ name: 1 }).lean();
-            csvContent = "Name,City,State,isActive\n";
-            list.forEach(u => {
-                csvContent += `${escapeCSV(u.name)},${escapeCSV(u.city)},${escapeCSV(u.state)},${u.isActive !== false}\n`;
-            });
-            filename = `hykee_universities_export_${Date.now()}.csv`;
-        } else if (category === "campuses" || category === "colleges" || category === "college") {
-            const list = await College.find().populate("university", "name").sort({ name: 1 }).lean();
-            csvContent = "Name,University,Code,City,State,isActive\n";
+        if (category === "universities" || category === "university" || category === "campuses" || category === "colleges" || category === "college") {
+            const list = await College.find().sort({ name: 1 }).lean();
+            csvContent = "Name,InstituteType,Code,City,State,isActive\n";
             list.forEach(c => {
-                const uName = c.university?.name || "";
-                csvContent += `${escapeCSV(c.name)},${escapeCSV(uName)},${escapeCSV(c.code)},${escapeCSV(c.city)},${escapeCSV(c.state)},${c.isActive !== false}\n`;
+                csvContent += `${escapeCSV(c.name)},${escapeCSV(c.instituteType || 'college')},${escapeCSV(c.code)},${escapeCSV(c.city)},${escapeCSV(c.state)},${c.isActive !== false}\n`;
             });
-            filename = `hykee_colleges_export_${Date.now()}.csv`;
+            filename = `hykee_institutions_export_${Date.now()}.csv`;
         } else if (category === "departments" || category === "department") {
             const list = await Department.find().sort({ name: 1 }).lean();
             csvContent = "Name,Code,isActive\n";
@@ -657,20 +605,15 @@ exports.adminExportCSV = async (req, res) => {
             filename = `hykee_courses_branches_export_${Date.now()}.csv`;
         } else {
             // Unified export of everything in one clean spreadsheet
-            const [unis, colleges, depts, branches] = await Promise.all([
-                University.find().sort({ name: 1 }).lean(),
-                College.find().populate("university", "name").sort({ name: 1 }).lean(),
+            const [colleges, depts, branches] = await Promise.all([
+                College.find().sort({ name: 1 }).lean(),
                 Department.find().sort({ name: 1 }).lean(),
                 Branch.find().sort({ name: 1 }).lean()
             ]);
 
-            csvContent = "Type,Name,University,Code,City,State,Degree,isActive\n";
-            unis.forEach(u => {
-                csvContent += `University,${escapeCSV(u.name)},,,${escapeCSV(u.city)},${escapeCSV(u.state)},,${u.isActive !== false}\n`;
-            });
+            csvContent = "Type,Name,InstituteType,Code,City,State,Degree,isActive\n";
             colleges.forEach(c => {
-                const uName = c.university?.name || "";
-                csvContent += `College,${escapeCSV(c.name)},${escapeCSV(uName)},${escapeCSV(c.code)},${escapeCSV(c.city)},${escapeCSV(c.state)},,${c.isActive !== false}\n`;
+                csvContent += `Institution,${escapeCSV(c.name)},${escapeCSV(c.instituteType || 'college')},${escapeCSV(c.code)},${escapeCSV(c.city)},${escapeCSV(c.state)},,${c.isActive !== false}\n`;
             });
             depts.forEach(d => {
                 csvContent += `Department,${escapeCSV(d.name)},,${escapeCSV(d.code)},,,,${d.isActive !== false}\n`;
