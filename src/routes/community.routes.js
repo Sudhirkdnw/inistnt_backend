@@ -3,13 +3,13 @@ const router = express.Router();
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
 
-const { authMiddleware, optionalAuth } = require("../middlewares/authmiddleware");
+const { authMiddleware, softAuthMiddleware } = require("../middlewares/authmiddleware");
 const communityCtrl = require("../controllers/community.controller");
 
 // Discovery & Info
-router.get("/home", optionalAuth, communityCtrl.getHomeCommunities);
-router.get("/", optionalAuth, communityCtrl.getCommunities);
-router.get("/:idOrSlug", optionalAuth, communityCtrl.getCommunityDetails);
+router.get("/home", softAuthMiddleware, communityCtrl.getHomeCommunities);
+router.get("/", softAuthMiddleware, communityCtrl.getCommunities);
+router.get("/:idOrSlug", softAuthMiddleware, communityCtrl.getCommunityDetails);
 
 // Membership actions (Require Auth)
 router.post("/:id/join", authMiddleware, communityCtrl.joinCommunity);

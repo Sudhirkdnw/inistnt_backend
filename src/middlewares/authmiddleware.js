@@ -61,4 +61,4 @@ async function softAuthMiddleware(req, res, next) {
     }
 }
 
-module.exports = { authMiddleware, softAuthMiddleware };
+module.exports = { authMiddleware, softAuthMiddleware, optionalAuth: softAuthMiddleware };
