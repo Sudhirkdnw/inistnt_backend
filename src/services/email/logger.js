@@ -10,6 +10,10 @@ class EmailLogger {
      * Log and save an email when it gets queued in the database/worker queue.
      */
     static async logQueued(to, subject, templateName) {
+        if (!to || !to.trim()) {
+            console.warn(`[Email System] ⚠️ Skipped logQueued: Recipient email address is empty.`);
+            return null;
+        }
         try {
             const dbLog = new EmailLog({
                 to,

@@ -81,6 +81,14 @@ async function sendEmailAsync({ to, subject, htmlBody, textBody, templateName })
     const cleanTo = clientModule.sanitizeEmailAddress(to);
     const cleanSubject = clientModule.sanitizeEmailInput(subject);
 
+    if (!cleanTo || !cleanTo.trim()) {
+        console.warn(`[Email System] ⚠️ Aborted sendEmailAsync: Recipient email address is missing or empty for template "${templateName || 'general'}".`);
+        return {
+            success: false,
+            message: "Recipient email address is missing."
+        };
+    }
+
     // 2. Anti-Abuse Rate Limiting
     const enableRateLimiting = getSetting("email_rate_limiting_enabled", true);
     if (enableRateLimiting && isSpamRateLimited(cleanTo)) {
@@ -91,6 +99,12 @@ async function sendEmailAsync({ to, subject, htmlBody, textBody, templateName })
 
     // 3. Persist Log Record Immediately in Pending Status
     const dbLog = await EmailLogger.logQueued(cleanTo, cleanSubject, templateName || "general");
+    if (!dbLog || !dbLog._id) {
+        return {
+            success: false,
+            message: "Failed to persist queued email log."
+        };
+    }
 
     // Store HTML & Plain-Text in Mongoose log metadata
     dbLog.metadata = {
