@@ -5,7 +5,7 @@ const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 }
 });
-const authMiddleware = require("../middlewares/auth.middleware");
+const { authMiddleware } = require("../middlewares/authmiddleware");
 const verificationCtrl = require("../controllers/verification.controller");
 
 // ── Secure 1-Click Email Actions (No Login Required, Cryptographically Signed) ──
