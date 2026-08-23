@@ -154,16 +154,24 @@ async function registerController(req, res) {
             return res.status(400).json({ message: "College ID card image upload is required for ID_CARD verification flow" });
         }
 
+        // Ensure at least one contact email exists for the user account
+        const effectiveEmail = email ? email.trim().toLowerCase() : (resolvedMethod === "EMAIL" && collegeEmail ? collegeEmail.trim().toLowerCase() : "");
+        if (!effectiveEmail) {
+            return res.status(400).json({
+                message: "An email address is required. Please provide a personal email or verify your college email."
+            });
+        }
+
         const userAlreadyExist = await userModel.findOne({
             $or: [
                 { username: username.toLowerCase() },
-                ...(email ? [{ email: email.toLowerCase() }] : []),
+                { email: effectiveEmail },
                 ...(collegeEmail ? [{ collegeEmail: collegeEmail.toLowerCase() }] : [])
             ]
         });
 
         if (userAlreadyExist) {
-            return res.status(409).json({ message: "User already exists" });
+            return res.status(409).json({ message: "User already exists with this username or email" });
         }
 
         let idCardImage = "";
@@ -236,7 +244,8 @@ async function registerController(req, res) {
         const user = await userModel.create({
             username: username.toLowerCase(),
             password: await bcrypt.hash(password, 10),
-            email: email ? email.toLowerCase() : undefined,
+            email: effectiveEmail,
+            isEmailVerified: resolvedMethod === "EMAIL",
             fullName: fullName || "",
             collegeName: resolvedCollegeName,
             collegeId: resolvedCollegeId,
