@@ -54,7 +54,8 @@ const {
     getSubscribers: getPremiumSubscribers,
     updateSubscriberAdmin,
     getSubscriberAudit,
-    getPremiumAnalytics
+    getPremiumAnalytics,
+    getPremiumUsers
 } = require("../controllers/adminPremium.controller");
 
 // All admin routes require auth + admin role
@@ -168,6 +169,7 @@ router.get("/premium/subscribers", requirePermission("premium", "view"), getPrem
 router.put("/premium/subscribers/:id", requirePermission("premium", "update"), updateSubscriberAdmin);
 router.get("/premium/subscribers/:id/audit", requirePermission("premium", "view"), getSubscriberAudit);
 router.get("/premium/analytics", requirePermission("premium", "view"), getPremiumAnalytics);
+router.get("/premium/users", requirePermission("premium", "view"), getPremiumUsers);
 
 // Campus Connect Control Center
 router.get("/campus-connect/stats", requirePermission("analytics", "view"), ccAdmin.getStats);
@@ -258,4 +260,15 @@ router.put("/advertisements/:id", upload.single("image"), adCtrl.updateAdvertise
 router.patch("/advertisements/:id/status", adCtrl.toggleAdStatus);
 router.delete("/advertisements/:id", adCtrl.deleteAdvertisement);
 
+// Campus Ambassador Management Module
+const adminAmbassadorCtrl = require("../controllers/adminAmbassador.controller");
+router.get("/ambassadors", requirePermission("userManagement", "view"), adminAmbassadorCtrl.listAmbassadors);
+router.get("/ambassadors/analytics/overview", requirePermission("userManagement", "view"), adminAmbassadorCtrl.getAmbassadorAnalytics);
+router.get("/ambassadors/leaderboard", requirePermission("userManagement", "view"), adminAmbassadorCtrl.getAmbassadorLeaderboard);
+router.get("/ambassadors/:id", requirePermission("userManagement", "view"), adminAmbassadorCtrl.getAmbassadorDetails);
+router.post("/ambassadors", requirePermission("userManagement", "create"), adminAmbassadorCtrl.assignAmbassador);
+router.put("/ambassadors/:id", requirePermission("userManagement", "update"), adminAmbassadorCtrl.updateAmbassador);
+router.delete("/ambassadors/:id", requirePermission("userManagement", "delete"), adminAmbassadorCtrl.revokeAmbassador);
+
 module.exports = router;
+

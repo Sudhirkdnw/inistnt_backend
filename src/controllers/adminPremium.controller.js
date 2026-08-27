@@ -660,6 +660,136 @@ async function cancelSubscriptionAdmin(req, res) {
     }
 }
 
+// GET /api/admin/premium/users — All users with isPremium:true (union of subscription records + direct user field)
+async function getPremiumUsers(req, res) {
+    try {
+        const { search, status } = req.query;
+        const now = new Date();
+
+        // 1. Fetch all users where isPremium is true
+        const premiumUserQuery = { isPremium: true };
+        if (search && search.trim()) {
+            const q = search.trim();
+            const regex = new RegExp(q, 'i');
+            premiumUserQuery.$or = [
+                { username: regex },
+                { fullName: regex },
+                { email: regex }
+            ];
+        }
+
+        const premiumUsers = await userModel.find(premiumUserQuery)
+            .select('username fullName email avatar collegeName department isPremium premiumExpireAt createdAt')
+            .sort({ premiumExpireAt: -1 })
+            .lean();
+
+        const premiumUserIds = premiumUsers.map(u => u._id);
+
+        // 2. Fetch their latest subscriptions
+        const subscriptions = await subscriptionModel.find({ user: { $in: premiumUserIds } })
+            .populate('plan', 'name price billingPeriod')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Build subscription map: userId → latest subscription
+        const subMap = {};
+        subscriptions.forEach(sub => {
+            const uid = String(sub.user);
+            if (!subMap[uid]) subMap[uid] = sub; // first is latest due to sort
+        });
+
+        // 3. Fetch latest payment histories for those subscriptions
+        const subIds = subscriptions.map(s => s._id);
+        const payments = await paymentHistoryModel.find({ subscription: { $in: subIds } })
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const paymentMap = {};
+        payments.forEach(p => {
+            const sid = String(p.subscription);
+            if (!paymentMap[sid]) paymentMap[sid] = p;
+        });
+
+        // 4. Enrich users with subscription + payment data
+        const enriched = premiumUsers.map(user => {
+            const uid = String(user._id);
+            const sub = subMap[uid] || null;
+            const payment = sub ? (paymentMap[String(sub._id)] || null) : null;
+
+            const expiry = user.premiumExpireAt ? new Date(user.premiumExpireAt) : null;
+            const isCurrentlyActive = expiry ? expiry > now : false;
+            const daysRemaining = expiry ? Math.ceil((expiry - now) / (1000 * 60 * 60 * 24)) : 0;
+
+            // Determine effective status
+            let effectiveStatus = 'active';
+            if (!isCurrentlyActive) effectiveStatus = 'expired';
+            if (sub?.status === 'cancelled') effectiveStatus = 'cancelled';
+
+            return {
+                user: {
+                    _id: user._id,
+                    username: user.username,
+                    fullName: user.fullName,
+                    email: user.email,
+                    avatar: user.avatar,
+                    collegeName: user.collegeName,
+                    department: user.department,
+                    createdAt: user.createdAt
+                },
+                isPremium: user.isPremium,
+                premiumExpireAt: user.premiumExpireAt,
+                effectiveStatus,
+                isCurrentlyActive,
+                daysRemaining: isCurrentlyActive ? Math.max(0, daysRemaining) : 0,
+                subscription: sub ? {
+                    _id: sub._id,
+                    plan: sub.plan,
+                    startDate: sub.startDate || sub.createdAt,
+                    endDate: sub.endDate,
+                    status: sub.status,
+                    paymentGateway: sub.paymentGateway,
+                    gatewaySubscriptionId: sub.gatewaySubscriptionId
+                } : null,
+                latestPayment: payment ? {
+                    _id: payment._id,
+                    amount: payment.amount,
+                    currency: payment.currency || 'INR',
+                    status: payment.status,
+                    paymentGateway: payment.paymentGateway,
+                    gatewayTransactionId: payment.gatewayTransactionId,
+                    gatewayResponse: payment.gatewayResponse,
+                    paidAt: payment.createdAt
+                } : null,
+                hasOrphanedPremium: !sub // isPremium=true but no subscription record
+            };
+        });
+
+        // 5. Apply status filter if provided
+        const filtered = status && status !== 'all'
+            ? enriched.filter(e => e.effectiveStatus === status)
+            : enriched;
+
+        // 6. Stats
+        const totalPremium = enriched.length;
+        const activePremium = enriched.filter(e => e.effectiveStatus === 'active').length;
+        const expiredPremium = enriched.filter(e => e.effectiveStatus === 'expired').length;
+        const orphanedPremium = enriched.filter(e => e.hasOrphanedPremium).length;
+
+        res.status(200).json({
+            users: filtered,
+            stats: {
+                totalPremium,
+                activePremium,
+                expiredPremium,
+                orphanedPremium
+            }
+        });
+    } catch (error) {
+        console.error("getPremiumUsers error:", error);
+        res.status(500).json({ message: error.message });
+    }
+}
+
 module.exports = {
     getSettings,
     updateSettings,
@@ -672,5 +802,6 @@ module.exports = {
     getSubscribers,
     updateSubscriberAdmin,
     getSubscriberAudit,
-    getPremiumAnalytics
+    getPremiumAnalytics,
+    getPremiumUsers
 };

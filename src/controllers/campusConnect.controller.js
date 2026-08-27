@@ -83,7 +83,7 @@ function computeCompatibility(myProfile, myUser, theirProfile, theirUser) {
 async function setupProfile(req, res) {
     try {
         const userId = req.user._id;
-        const { intents, locationFilter, onboardingDone, mentorMode, mentorTags } = req.body;
+        const { intents, locationFilter, onboardingDone, mentorMode, mentorTags, preferredGender } = req.body;
 
         const user = await userModel.findById(userId);
         if (!user) return res.status(404).json({ message: "User not found" });
@@ -103,6 +103,7 @@ async function setupProfile(req, res) {
         if (profile) {
             if (intents !== undefined) profile.intents = intents;
             if (locationFilter !== undefined) profile.locationFilter = locationFilter;
+            if (preferredGender !== undefined) profile.preferredGender = preferredGender;
             if (onboardingDone !== undefined) profile.onboardingDone = onboardingDone;
             if (mentorMode !== undefined) profile.mentorMode = mentorMode;
             if (mentorTags !== undefined) profile.mentorTags = mentorTags;
@@ -112,13 +113,14 @@ async function setupProfile(req, res) {
                 user: userId,
                 intents: intents || [],
                 locationFilter: locationFilter || "my_college",
+                preferredGender: preferredGender || "all",
                 onboardingDone: onboardingDone || false,
                 mentorMode: false,
                 mentorTags: []
             });
         }
 
-        await profile.populate("user", "username fullName avatar collegeName verificationStatus branch semester skills interests goals photos");
+        await profile.populate("user", "username fullName avatar collegeName verificationStatus branch semester skills interests goals photos gender");
         return res.status(200).json({ message: "Profile preferences saved", profile });
     } catch (err) {
         console.error("setupProfile error:", err);
@@ -130,7 +132,7 @@ async function setupProfile(req, res) {
 async function getMyProfile(req, res) {
     try {
         const profile = await CampusConnectProfile.findOne({ user: req.user._id })
-            .populate("user", "username fullName avatar collegeName verificationStatus branch semester skills interests goals photos")
+            .populate("user", "username fullName avatar collegeName verificationStatus branch semester skills interests goals photos gender")
             .lean();
 
         if (!profile) {
@@ -185,21 +187,30 @@ async function getDiscovery(req, res) {
             user: { $nin: [userId, ...actedOnIds], ...((collegeFilter.user && myProfile.locationFilter === "my_college") ? {} : {}) },
             ...(myProfile.locationFilter === "my_college" && collegeFilter.user ? { user: { $in: collegeFilter.user.$in.filter(id => !actedOnIds.some(aid => String(aid) === String(id))) } } : { user: { $nin: [userId, ...actedOnIds] } }),
         })
-            .select("user intents mentorMode onboardingDone")
-            .limit(30)
-            .populate("user", "username fullName avatar collegeName verificationStatus branch semester skills interests goals photos bio")
+            .select("user intents mentorMode onboardingDone preferredGender")
+            .limit(40)
+            .populate("user", "username fullName avatar collegeName verificationStatus branch semester skills interests goals photos bio gender")
             .lean();
 
         // Filter orphaned profiles
         candidates = candidates.filter(c => c.user != null);
 
+        // ── Gender Preference filter ──────────────────────────────────
+        if (myProfile.preferredGender && myProfile.preferredGender !== "all") {
+            const targetGender = myProfile.preferredGender.toLowerCase();
+            candidates = candidates.filter(c => {
+                if (!c.user || !c.user.gender) return false;
+                return c.user.gender.trim().toLowerCase() === targetGender;
+            });
+        }
+
         // ── Relationship filter: only show relationship intent profiles
         // to users who also have relationship intent ──────────────────
-        const myHasRelationship = myProfile.intents.includes("relationship");
+        const myHasRelationship = (myProfile.intents || []).includes("relationship");
         candidates = candidates.filter(c => {
-            const theirHasRelationship = c.intents.includes("relationship");
+            const theirHasRelationship = (c.intents || []).includes("relationship");
             // If they ONLY have relationship intent, show only to relationship seekers
-            if (c.intents.length === 1 && theirHasRelationship && !myHasRelationship) {
+            if (c.intents && c.intents.length === 1 && theirHasRelationship && !myHasRelationship) {
                 return false;
             }
             return true;
@@ -763,6 +774,7 @@ async function getPreferences(req, res) {
                 preferences: {
                     intents: [],
                     locationFilter: "my_college",
+                    preferredGender: "all",
                     isActive: true,
                     preferredBranches: [],
                     preferredSemesters: [],
@@ -793,7 +805,7 @@ async function updatePreferences(req, res) {
     try {
         const userId = req.user._id;
         const {
-            intents, locationFilter, isActive,
+            intents, locationFilter, isActive, preferredGender,
             preferredBranches, preferredSemesters, preferredSkills,
             preferredInterests, preferredGoals, preferredCommunities,
             verifiedOnly, allowConnectionRequests, allowMessagesAfterConnect,
@@ -808,9 +820,10 @@ async function updatePreferences(req, res) {
             return res.status(404).json({ message: "Campus Connect profile not found. Please complete onboarding first." });
         }
 
-        // Discovery intents & location
+        // Discovery intents, location & gender preference
         if (intents !== undefined) profile.intents = intents;
         if (locationFilter !== undefined) profile.locationFilter = locationFilter;
+        if (preferredGender !== undefined) profile.preferredGender = preferredGender;
         if (isActive !== undefined) profile.isActive = isActive;
 
         // Discovery filters (weights)

@@ -9,7 +9,8 @@ const {
   getMyTeams,
   getTeamApplications,
   respondToApplication,
-  updateTeamStatus
+  updateTeamStatus,
+  deleteTeam
 } = require('../controllers/team.controller');
 
 // ── Public / Soft Auth Routes ────────────────────────────────────────────────
@@ -24,5 +25,8 @@ router.post('/:id/apply', authMiddleware, applyToTeam);
 router.get('/:id/applications', authMiddleware, getTeamApplications);
 router.put('/:id/applications/:applicationId', authMiddleware, respondToApplication);
 router.put('/:id/status', authMiddleware, updateTeamStatus);
+
+// Team Deletion (owner only)
+router.delete('/:id', authMiddleware, deleteTeam);
 
 module.exports = router;

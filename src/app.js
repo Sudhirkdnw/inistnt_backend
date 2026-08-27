@@ -137,6 +137,12 @@ app.use("/api/colleges", collegeRoutes);
 app.use("/api/hierarchy", collegeHierarchyRoutes);
 app.use("/api/communities", rateLimiter({ windowMs: 60 * 1000, max: 120, prefix: 'communities' }), communityRoutes);
 app.use("/api/teams", rateLimiter({ windowMs: 60 * 1000, max: 120, prefix: 'teams' }), teamRoutes);
+const ambassadorRoutes = require("./routes/ambassador.routes");
+const analyticsRoutes = require("./routes/analytics.routes");
+
+app.use("/api/analytics", analyticsRoutes);
+app.use("/api/ambassador", rateLimiter({ windowMs: 60 * 1000, max: 100, prefix: 'ambassador' }), ambassadorRoutes);
+app.use("/api/referrals", rateLimiter({ windowMs: 60 * 1000, max: 100, prefix: 'referrals' }), ambassadorRoutes);
 app.use("/api/advertisements", advertisementRoutes);
 app.use("/api/dashboard", rateLimiter({ windowMs: 60 * 1000, max: 60, prefix: 'dashboard' }), dashboardRoutes);
 

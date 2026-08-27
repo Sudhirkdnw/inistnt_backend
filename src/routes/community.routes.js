@@ -21,4 +21,7 @@ router.get("/:id/members", authMiddleware, communityCtrl.getCommunityMembers);
 router.get("/:id/messages", authMiddleware, communityCtrl.getCommunityMessages);
 router.post("/:id/messages", authMiddleware, upload.single("media"), communityCtrl.sendCommunityMessage);
 
+// Community Deletion (owner only)
+router.delete("/:id", authMiddleware, communityCtrl.deleteCommunity);
+
 module.exports = router;

@@ -65,10 +65,32 @@ async function registerController(req, res) {
             return res.status(403).json({ message: "New registrations are currently disabled by administrator" });
         }
 
-        const { username, password, email, fullName, collegeName, collegeId, collegeEmail, verificationMethod, university, universityId, department, branch, semester } = req.body;
+        const { username, password, email, fullName, collegeName, collegeId, collegeEmail, verificationMethod, university, universityId, department, branch, semester, referralCode } = req.body;
 
         if (!username || !password) {
             return res.status(400).json({ message: "Username and password are required" });
+        }
+
+        // Referral Code Validation (Optional)
+        let validatedAmbassador = null;
+        let cleanReferralCode = "";
+        if (referralCode && String(referralCode).trim()) {
+            cleanReferralCode = String(referralCode).trim().toUpperCase();
+            const CampusAmbassador = require("../models/campusAmbassador.model");
+            validatedAmbassador = await CampusAmbassador.findOne({ referralCode: cleanReferralCode, status: "ACTIVE" }).populate("user");
+            if (!validatedAmbassador || !validatedAmbassador.user) {
+                return res.status(400).json({ message: "Invalid referral code. Please check and try again." });
+            }
+
+            // Self-referral protection
+            const ambUser = validatedAmbassador.user;
+            if (
+                ambUser.username?.toLowerCase() === username.toLowerCase() ||
+                (email && ambUser.email?.toLowerCase() === email.trim().toLowerCase()) ||
+                (collegeEmail && ambUser.collegeEmail?.toLowerCase() === collegeEmail.trim().toLowerCase())
+            ) {
+                return res.status(400).json({ message: "You cannot use your own referral code." });
+            }
         }
 
         if (!collegeName && !collegeId) {
@@ -260,9 +282,49 @@ async function registerController(req, res) {
             verificationMethod: resolvedMethod,
             verificationStatus,
             isVerified,
+            referredBy: validatedAmbassador ? validatedAmbassador._id : null,
+            referralCodeUsed: validatedAmbassador ? cleanReferralCode : "",
             lastIp: metadata.ip,
             loginHistory: [{ ...metadata, isSuspicious: false }]
         });
+
+        // Create Referral Attribution Record if registered via valid referral code
+        if (validatedAmbassador) {
+            try {
+                const Referral = require("../models/referral.model");
+                const referralRecord = await Referral.create({
+                    ambassador: validatedAmbassador._id,
+                    ambassadorUser: validatedAmbassador.user._id,
+                    referredUser: user._id,
+                    referralCode: cleanReferralCode,
+                    metadata: {
+                        ip: metadata.ip || "",
+                        device: metadata.device || "",
+                        userAgent: metadata.userAgent || ""
+                    }
+                });
+
+                // Emit real-time Socket.IO event to ambassador room
+                const io = req.app.get("io");
+                if (io) {
+                    io.to(String(validatedAmbassador.user._id)).emit("new_referral", {
+                        referralId: referralRecord._id,
+                        referredUser: {
+                            _id: user._id,
+                            fullName: user.fullName || user.username,
+                            username: user.username,
+                            avatar: user.avatar || "",
+                            collegeName: user.collegeName,
+                            verificationStatus: user.verificationStatus,
+                            createdAt: user.createdAt
+                        },
+                        referralCode: cleanReferralCode
+                    });
+                }
+            } catch (refErr) {
+                console.error("Failed to create referral record:", refErr);
+            }
+        }
 
         // Create Verification Request and dispatch Admin Email for ID_CARD flow
         if (resolvedMethod === "ID_CARD") {
@@ -278,7 +340,8 @@ async function registerController(req, res) {
             collegeEmail: user.collegeEmail,
             collegeName: user.collegeName,
             verificationMethod: resolvedMethod,
-            verificationStatus
+            verificationStatus,
+            referralCodeUsed: cleanReferralCode || undefined
         }, user._id);
 
         if (resolvedMethod === "EMAIL" || process.env.NODE_ENV === "test") {
@@ -538,7 +601,8 @@ async function getMeController(req, res) {
         }
         const user = await userModel.findById(req.user._id)
             .select("-password")
-            .populate("roleRef", "name permissions");
+            .populate("roleRef", "name permissions")
+            .populate("ambassadorRef", "referralCode status college");
         res.status(200).json({ user });
     } catch (error) {
         res.status(500).json({ message: error.message });

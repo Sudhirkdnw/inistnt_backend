@@ -312,6 +312,29 @@ const userSchema = new mongoose.Schema({
         type: Date,
         default: null
     },
+    // Campus Ambassador & Referral Program Fields
+    isAmbassador: {
+        type: Boolean,
+        default: false,
+        index: true
+    },
+    ambassadorRef: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "CampusAmbassador",
+        default: null
+    },
+    referredBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "CampusAmbassador",
+        default: null,
+        index: true
+    },
+    referralCodeUsed: {
+        type: String,
+        trim: true,
+        uppercase: true,
+        default: ""
+    },
     // Enterprise Admin Role & Permissions Settings
     adminRole: {
         type: String,

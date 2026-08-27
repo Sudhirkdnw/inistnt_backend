@@ -66,6 +66,11 @@ const campusConnectSchema = new mongoose.Schema({
         default: false
     },
     // ── Discovery Filters (preferences — act as weights, not hard filters) ────
+    preferredGender: {
+        type: String,
+        enum: ["all", "male", "female", "other"],
+        default: "all"
+    },
     preferredBranches: [{ type: String, trim: true }],
     preferredSemesters: [{ type: Number }],
     preferredSkills: [{ type: String, trim: true }],

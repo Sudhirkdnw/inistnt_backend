@@ -559,6 +559,63 @@ exports.getCommunityMessages = async (req, res) => {
     }
 };
 
+// ── DELETE /api/communities/:id — Delete community (owner only) ───────────────
+exports.deleteCommunity = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user._id;
+
+        const community = await Community.findById(id);
+        if (!community) {
+            return res.status(404).json({ success: false, message: "Community not found." });
+        }
+
+        // Authorization: only the owner (or platform admin) can delete
+        const membership = await CommunityMember.findOne({
+            community: id,
+            user: userId,
+            role: "owner",
+            status: "active"
+        });
+
+        if (!membership && req.user.role !== "admin") {
+            return res.status(403).json({
+                success: false,
+                message: "Only the community owner can delete this community."
+            });
+        }
+
+        // Cascade delete all related data
+        // 1. Delete all messages in the linked conversation
+        if (community.conversation) {
+            await Message.deleteMany({ conversation: community.conversation });
+            // 2. Delete the conversation itself
+            await Conversation.findByIdAndDelete(community.conversation);
+        }
+
+        // 3. Delete all community members
+        await CommunityMember.deleteMany({ community: id });
+
+        // 4. Delete the community document
+        await Community.findByIdAndDelete(id);
+
+        // Broadcast deletion via Socket.IO so all open screens update
+        const io = req.app.get("io");
+        if (io) {
+            io.emit("community_deleted", { communityId: id });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Community "${community.name}" has been permanently deleted.`,
+            communityId: id
+        });
+    } catch (error) {
+        console.error("Error in deleteCommunity:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // ── POST /api/communities/:id/messages — Send message in community group chat ──
 exports.sendCommunityMessage = async (req, res) => {
     try {

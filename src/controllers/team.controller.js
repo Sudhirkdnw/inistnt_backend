@@ -6,6 +6,7 @@ const Conversation = require('../models/conversation.model');
 const Confession = require('../models/confession.model');
 const User = require('../models/user.model');
 const Notification = require('../models/notification.model');
+const Message = require('../models/message.model');
 
 // Helper to get socket instance
 const getIO = (req) => req.app.get('io');
@@ -763,5 +764,99 @@ exports.updateTeamStatus = async (req, res) => {
   } catch (err) {
     console.error('updateTeamStatus error:', err);
     return res.status(500).json({ success: false, message: err.message || 'Failed to update team status' });
+  }
+};
+
+
+/**
+ * ── DELETE /api/teams/:id ─────────────────────────────────────────────────────
+ * Team owner permanently deletes their team post with full cascade:
+ *  - Notifies pending applicants of cancellation
+ *  - Deletes all applications
+ *  - Deletes all team members
+ *  - Deletes linked group conversation + messages
+ *  - Deletes the linked Home feed confession post
+ *  - Deletes the Team document
+ */
+exports.deleteTeam = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const team = await Team.findById(id).populate('owner', 'fullName username');
+    if (!team) {
+      return res.status(404).json({ success: false, message: 'Team not found.' });
+    }
+
+    // Authorization: only the team owner (or platform admin) can delete
+    if (String(team.owner?._id || team.owner) !== String(req.user._id) && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the team owner can delete this team.'
+      });
+    }
+
+    const io = getIO(req);
+
+    // 1. Find all PENDING applicants to notify them before deletion
+    const pendingApplications = await TeamApplication.find({
+      team: id,
+      status: 'PENDING'
+    }).select('applicant');
+
+    // 2. Send cancellation notifications to pending applicants
+    if (pendingApplications.length > 0) {
+      const notifications = pendingApplications.map(app => ({
+        recipient: app.applicant,
+        sender: req.user._id,
+        type: 'team_application_rejected',
+        message: `The team "${team.title}" you applied to has been deleted by its owner.`
+      }));
+      await Notification.insertMany(notifications).catch(() => {}); // Non-blocking
+
+      // Real-time notify pending applicants
+      if (io) {
+        pendingApplications.forEach(app => {
+          io.to(String(app.applicant)).emit('team_application_updated', {
+            teamId: id,
+            status: 'CANCELLED',
+            message: `The team "${team.title}" has been deleted.`
+          });
+        });
+      }
+    }
+
+    // 3. Delete all team applications
+    await TeamApplication.deleteMany({ team: id });
+
+    // 4. Delete all team members
+    await TeamMember.deleteMany({ team: id });
+
+    // 5. Delete linked group conversation and its messages
+    if (team.conversation) {
+      await Message.deleteMany({ conversation: team.conversation });
+      await Conversation.findByIdAndDelete(team.conversation);
+    }
+
+    // 6. Delete the linked Home feed post (Confession with postType: TEAM_RECRUITMENT)
+    if (team.confessionPost) {
+      await Confession.findByIdAndDelete(team.confessionPost);
+    }
+
+    // 7. Delete the Team document
+    await Team.findByIdAndDelete(id);
+
+    // 8. Broadcast deletion via Socket.IO for real-time UI removal
+    if (io) {
+      io.emit('team_deleted', { teamId: id });
+    }
+
+    return res.json({
+      success: true,
+      message: `Team "${team.title}" has been permanently deleted.`,
+      teamId: id
+    });
+  } catch (err) {
+    console.error('deleteTeam error:', err);
+    return res.status(500).json({ success: false, message: err.message || 'Failed to delete team' });
   }
 };
