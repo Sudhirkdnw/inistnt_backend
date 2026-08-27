@@ -254,31 +254,56 @@ exports.updateCommunity = async (req, res) => {
     }
 };
 
-// ── DELETE /api/admin/communities/:id — Archive or delete community ───────────
+// ── DELETE /api/admin/communities/:id — Permanent Admin Cascade Deletion ───────
 exports.deleteCommunity = async (req, res) => {
     try {
         const { id } = req.params;
-        const { hardDelete } = req.query;
 
-        if (hardDelete === "true") {
-            const community = await Community.findByIdAndDelete(id);
-            if (!community) return res.status(404).json({ success: false, message: "Community not found." });
-
+        const community = await Community.findById(id);
+        if (!community) {
+            // Even if not found by findById, attempt cleanups of lingering references
             await CommunityMember.deleteMany({ community: id });
-            if (community.conversation) {
-                await Conversation.findByIdAndDelete(community.conversation);
-            }
-            return res.status(200).json({ success: true, message: "Community permanently deleted." });
+            return res.status(404).json({ success: false, message: "Community not found or already deleted." });
         }
 
-        // Default: Archive
-        const community = await Community.findByIdAndUpdate(id, { status: "ARCHIVED" }, { returnDocument: 'after' });
-        if (!community) return res.status(404).json({ success: false, message: "Community not found." });
+        // 1. Delete all member records
+        await CommunityMember.deleteMany({ community: id });
 
-        res.status(200).json({
+        // 2. Delete linked Conversation and all its Messages
+        if (community.conversation) {
+            try {
+                const Message = require("../models/message.model");
+                await Message.deleteMany({ conversation: community.conversation });
+                await Conversation.findByIdAndDelete(community.conversation);
+            } catch (convErr) {
+                console.warn("Error cleaning up community conversation:", convErr);
+            }
+        }
+
+        // 3. Delete any posts tied to this community if any
+        try {
+            const Confession = require("../models/confession.model");
+            await Confession.deleteMany({ community: id });
+        } catch (postErr) {
+            // Non-blocking
+        }
+
+        // 4. Delete the Community document itself
+        await Community.findByIdAndDelete(id);
+
+        // 5. Emit socket event so mobile & web clients update in real time
+        try {
+            const io = req.app.get("io");
+            if (io) {
+                io.emit("community_deleted", { communityId: id });
+            }
+        } catch (socketErr) {
+            // Non-blocking
+        }
+
+        return res.status(200).json({
             success: true,
-            message: `Community "${community.name}" has been archived.`,
-            community
+            message: `Community "${community.name}" and all related chats/members permanently deleted by Admin.`
         });
     } catch (error) {
         console.error("Error in deleteCommunity:", error);

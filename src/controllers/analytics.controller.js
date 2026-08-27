@@ -9,7 +9,7 @@ const teamModel = require("../models/team.model");
 const teamApplicationModel = require("../models/teamApplication.model");
 const CampusAmbassador = require("../models/campusAmbassador.model");
 const Referral = require("../models/referral.model");
-const CampusConnectProfile = require("../models/campusConnect.model");
+const { CampusConnectProfile } = require("../models/campusConnect.model");
 const Subscription = require("../models/subscription.model");
 
 /**

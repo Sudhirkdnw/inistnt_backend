@@ -123,4 +123,9 @@ campusConnectSchema.index({ "teamListing.isLooking": 1 });
 
 const CampusConnectProfile = mongoose.model("CampusConnectProfile", campusConnectSchema);
 
-module.exports = { CampusConnectProfile, BRANCH_SKILLS };
+// Support both direct import: require('./campusConnect.model')
+// and destructuring import: const { CampusConnectProfile, BRANCH_SKILLS } = require('./campusConnect.model')
+CampusConnectProfile.CampusConnectProfile = CampusConnectProfile;
+CampusConnectProfile.BRANCH_SKILLS = BRANCH_SKILLS;
+
+module.exports = CampusConnectProfile;

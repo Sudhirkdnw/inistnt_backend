@@ -135,7 +135,7 @@ exports.updateAdminTeamStatus = async (req, res) => {
 
 /**
  * ── DELETE /api/admin/teams/:id ──────────────────────────────────────────────
- * Admin archive or delete team
+ * Permanent Admin Cascade Deletion of Team
  */
 exports.deleteAdminTeam = async (req, res) => {
   try {
@@ -143,23 +143,58 @@ exports.deleteAdminTeam = async (req, res) => {
 
     const team = await Team.findById(id);
     if (!team) {
-      return res.status(404).json({ success: false, message: 'Team not found' });
+      // Even if not found, perform cleanup of any lingering applications/members
+      await TeamApplication.deleteMany({ team: id });
+      await TeamMember.deleteMany({ team: id });
+      return res.status(404).json({ success: false, message: 'Team not found or already deleted' });
     }
 
-    team.status = 'ARCHIVED';
-    await team.save();
+    // 1. Delete all team applications
+    await TeamApplication.deleteMany({ team: id });
 
-    // Hide linked feed post
+    // 2. Delete all team members
+    await TeamMember.deleteMany({ team: id });
+
+    // 3. Delete linked group conversation and messages
+    if (team.conversation) {
+      try {
+        const Message = require('../models/message.model');
+        await Message.deleteMany({ conversation: team.conversation });
+        await Conversation.findByIdAndDelete(team.conversation);
+      } catch (convErr) {
+        console.warn('Error deleting team conversation:', convErr);
+      }
+    }
+
+    // 4. Delete linked feed post (Confession with postType: TEAM_RECRUITMENT)
     if (team.confessionPost) {
-      await Confession.findByIdAndUpdate(team.confessionPost, { isHidden: true });
+      try {
+        await Confession.findByIdAndDelete(team.confessionPost);
+      } catch (postErr) {
+        // Non-blocking
+      }
+    }
+
+    // 5. Delete the Team document itself
+    await Team.findByIdAndDelete(id);
+
+    // 6. Broadcast deletion via Socket.IO
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('team_deleted', { teamId: id });
+      }
+    } catch (socketErr) {
+      // Non-blocking
     }
 
     return res.json({
       success: true,
-      message: 'Team recruitment post archived successfully'
+      message: `Team "${team.title}" and all related data permanently deleted by Admin.`,
+      teamId: id
     });
   } catch (err) {
     console.error('deleteAdminTeam error:', err);
-    return res.status(500).json({ success: false, message: err.message || 'Failed to archive team' });
+    return res.status(500).json({ success: false, message: err.message || 'Failed to delete team' });
   }
 };
