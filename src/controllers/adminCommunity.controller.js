@@ -173,6 +173,9 @@ exports.createCommunity = async (req, res) => {
         });
     } catch (error) {
         console.error("Error in createCommunity:", error);
+        if (error.code === 11000) {
+            return res.status(409).json({ success: false, message: "A community with this name or slug already exists." });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 };

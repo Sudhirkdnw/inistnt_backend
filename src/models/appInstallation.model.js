@@ -55,8 +55,7 @@ const appInstallationSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
-appInstallationSchema.index({ firstSeenAt: 1 });
-appInstallationSchema.index({ lastSeenAt: 1 });
+// Compound index for platform + activity filtering
 appInstallationSchema.index({ platform: 1, lastSeenAt: 1 });
 
 const AppInstallation = mongoose.model("AppInstallation", appInstallationSchema);
