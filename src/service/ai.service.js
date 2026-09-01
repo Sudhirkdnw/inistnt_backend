@@ -143,22 +143,24 @@ async function moderateContent(text) {
             return { isSafe: true, reason: null, toxicityScore: 0 };
         }
 
+        const trimmedText = text.slice(0, 1000);
         const client = getGroqClient();
         const completion = await executeWithFallback(async (model) => {
             return await client.chat.completions.create({
                 messages: [
                     {
                         role: "system",
-                        content: "You are a content moderation AI. Analyze the given text for hate speech, extreme violence, sexual content, or severe harassment. You must output a valid JSON object with keys: isSafe (boolean), reason (string or null), and toxicityScore (number between 0 and 1)."
+                        content: "You are a content moderation AI. Analyze the text for hate speech, extreme violence, explicit sexual content, or severe harassment. You must output only a valid JSON object without markdown formatting: {\"isSafe\": boolean, \"reason\": string or null, \"toxicityScore\": number between 0.0 and 1.0}."
                     },
                     {
                         role: "user",
-                        content: `Analyze this content for safety and return a JSON object: "${text}"`
+                        content: `Analyze this content for safety and return JSON: ${JSON.stringify(trimmedText)}`
                     }
                 ],
                 model,
                 response_format: { type: "json_object" },
-                max_tokens: 150
+                max_tokens: 500,
+                temperature: 0.1
             });
         });
 

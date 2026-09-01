@@ -15,13 +15,19 @@ const { sendVerificationEmail } = require("../services/emailService");
 async function getUserProfile(req, res) {
     try {
         const user = await userModel.findById(req.params.id)
-            .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt isPremium followRequests coverPhoto university department branch semester gradYear skills interests goals github linkedin portfolio resume achievements certifications communitiesJoined photos gender dob pronouns website languages showOnlineStatus hideFromSuggestions isEmailVerified")
+            .select("username fullName bio avatar followers following isPrivate isVerified collegeName createdAt isPremium followRequests coverPhoto university department branch semester gradYear skills interests goals github linkedin portfolio resume achievements certifications communitiesJoined photos gender dob pronouns website languages showOnlineStatus hideFromSuggestions isEmailVerified isAmbassador ambassadorRef")
             .populate("followers", "username fullName avatar isVerified")
             .populate("following", "username fullName avatar isVerified")
             .lean();
 
         if (!user) {
             return res.status(404).json({ message: "User not found" });
+        }
+
+        const CampusAmbassador = require("../models/campusAmbassador.model");
+        const isCampusAmbassador = !!user.isAmbassador || !!(await CampusAmbassador.exists({ user: user._id, status: "ACTIVE" }));
+        if (isCampusAmbassador && !user.isAmbassador) {
+            userModel.findByIdAndUpdate(user._id, { isAmbassador: true }).catch(() => {});
         }
 
         const currentUserId = req.user._id.toString();
@@ -38,6 +44,7 @@ async function getUserProfile(req, res) {
 
         let responseUser = {
             ...user,
+            isAmbassador: isCampusAmbassador,
             followersCount,
             followingCount,
             isFollowingUser: isFollowing,
@@ -260,8 +267,8 @@ async function updateProfile(req, res) {
         if (req.body.languages !== undefined) user.languages = req.body.languages;
         if (req.body.showOnlineStatus !== undefined) user.showOnlineStatus = req.body.showOnlineStatus;
         if (req.body.hideFromSuggestions !== undefined) user.hideFromSuggestions = req.body.hideFromSuggestions;
-
         await user.save();
+        await invalidateUserCache(req.user._id);
 
         res.status(200).json({ 
             message: "Profile updated", 
@@ -1013,7 +1020,7 @@ async function searchUsers(req, res) {
             isSoftDeleted: false,
             $or: orConditions
         })
-        .select("username fullName avatar bio collegeName isVerified followers lastActive")
+        .select("username fullName avatar bio collegeName branch isVerified isAmbassador followers following lastActive")
         .limit(100) // Query up to 100 candidates for dynamic scoring
         .lean();
 
