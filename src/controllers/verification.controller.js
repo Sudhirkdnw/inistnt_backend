@@ -70,7 +70,7 @@ async function notifyAdminsNewVerification(verificationDoc, userDoc) {
         let targetEmails = [];
 
         if (explicitAdminEmail) {
-            targetEmails.push(explicitAdminEmail);
+            targetEmails = explicitAdminEmail.split(",").map(e => e.trim()).filter(Boolean);
         } else {
             // Find superadmins and admins
             const adminUsers = await userModel.find({ role: { $in: ["admin", "superadmin"] }, email: { $exists: true, $ne: "" } }).select("email");
@@ -82,7 +82,10 @@ async function notifyAdminsNewVerification(verificationDoc, userDoc) {
             targetEmails = [process.env.EMAIL_FROM || "admin@hykee.in"];
         }
 
-        for (const adminEmail of targetEmails) {
+        // Deduplicate target emails (case-insensitive) to prevent duplicate dispatch
+        const uniqueTargetEmails = Array.from(new Set(targetEmails.map(e => e.toLowerCase().trim()))).filter(Boolean);
+
+        for (const adminEmail of uniqueTargetEmails) {
             sendAdminVerificationRequestEmail(
                 adminEmail,
                 studentDetails,

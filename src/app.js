@@ -145,6 +145,8 @@ app.use("/api/ambassador", rateLimiter({ windowMs: 60 * 1000, max: 100, prefix: 
 app.use("/api/referrals", rateLimiter({ windowMs: 60 * 1000, max: 100, prefix: 'referrals' }), ambassadorRoutes);
 app.use("/api/advertisements", advertisementRoutes);
 app.use("/api/dashboard", rateLimiter({ windowMs: 60 * 1000, max: 60, prefix: 'dashboard' }), dashboardRoutes);
+const careerRoutes = require("./routes/career.routes");
+app.use("/api/careers", rateLimiter({ windowMs: 60 * 1000, max: 120, prefix: 'careers' }), careerRoutes);
 
 app.get("/api/health", (req, res) => {
     res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });

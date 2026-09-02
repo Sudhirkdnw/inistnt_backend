@@ -270,5 +270,20 @@ router.post("/ambassadors", requirePermission("userManagement", "create"), admin
 router.put("/ambassadors/:id", requirePermission("userManagement", "update"), adminAmbassadorCtrl.updateAmbassador);
 router.delete("/ambassadors/:id", requirePermission("userManagement", "delete"), adminAmbassadorCtrl.revokeAmbassador);
 
+// Careers & Hiring Management Module
+const careerCtrl = require("../controllers/career.controller");
+router.get("/careers", requirePermission("userManagement", "view"), careerCtrl.adminGetJobs);
+router.post("/careers", requirePermission("userManagement", "create"), careerCtrl.adminCreateJob);
+router.put("/careers/:id", requirePermission("userManagement", "update"), careerCtrl.adminUpdateJob);
+router.patch("/careers/:id/status", requirePermission("userManagement", "update"), careerCtrl.adminToggleJobStatus);
+router.delete("/careers/:id", requirePermission("userManagement", "delete"), careerCtrl.adminDeleteJob);
+
+// Candidate Applications Management
+router.get("/careers/applications/all", requirePermission("userManagement", "view"), careerCtrl.adminGetApplications);
+router.get("/careers/applications", requirePermission("userManagement", "view"), careerCtrl.adminGetApplications);
+router.patch("/careers/applications/:id/status", requirePermission("userManagement", "update"), careerCtrl.adminUpdateApplicationStatus);
+router.delete("/careers/applications/:id", requirePermission("userManagement", "delete"), careerCtrl.adminDeleteApplication);
+
 module.exports = router;
+
 
