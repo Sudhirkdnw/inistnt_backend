@@ -8,22 +8,27 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const connectDB = require("../db/db");
 const College = require("../models/college.model");
+const University = require("../models/university.model");
 
 async function clearColleges() {
     try {
         await connectDB();
         console.log("Connected to MongoDB database.");
 
-        const initialCount = await College.countDocuments({});
-        console.log(`Current colleges in database: ${initialCount}`);
+        const initialColleges = await College.countDocuments({});
+        const initialUnis = await University.countDocuments({});
+        console.log(`Current colleges: ${initialColleges}, Universities: ${initialUnis}`);
 
-        const result = await College.deleteMany({});
-        console.log(`Deleted ${result.deletedCount} college records.`);
+        const collegeRes = await College.deleteMany({});
+        const uniRes = await University.deleteMany({});
+        console.log(`Deleted ${collegeRes.deletedCount} college records.`);
+        console.log(`Deleted ${uniRes.deletedCount} university records.`);
 
-        const remainingCount = await College.countDocuments({});
-        console.log(`Remaining colleges in database: ${remainingCount}`);
+        const remainingColleges = await College.countDocuments({});
+        const remainingUnis = await University.countDocuments({});
+        console.log(`Remaining colleges: ${remainingColleges}, Remaining universities: ${remainingUnis}`);
 
-        console.log("Colleges collection successfully cleared!");
+        console.log("Colleges & Universities collections successfully cleared!");
         process.exit(0);
     } catch (err) {
         console.error("Error clearing colleges:", err);
@@ -32,3 +37,4 @@ async function clearColleges() {
 }
 
 clearColleges();
+

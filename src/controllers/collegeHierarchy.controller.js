@@ -264,8 +264,15 @@ exports.adminCreateCampus = async (req, res) => {
         const { name, city, state, code, isActive, instituteType } = req.body;
         if (!name || !name.trim()) return res.status(400).json({ message: "College/Institution name is required" });
 
+        const cleanName = name.replace(/\s+/g, ' ').trim();
+        const escaped = cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const existing = await College.findOne({ name: new RegExp(`^${escaped}$`, 'i') });
+        if (existing) {
+            return res.status(400).json({ message: `An institution with the name "${cleanName}" already exists` });
+        }
+
         const item = await College.create({
-            name: name.trim(),
+            name: cleanName,
             instituteType: instituteType || "college",
             code: code ? code.trim() : "",
             city: city ? city.trim() : "",
@@ -286,12 +293,21 @@ exports.adminUpdateCampus = async (req, res) => {
         const { name, city, state, code, isActive, instituteType } = req.body;
 
         const updateData = {
-            name: name ? name.trim() : undefined,
             code: code !== undefined ? code.trim() : undefined,
             city: city !== undefined ? city.trim() : undefined,
             state: state !== undefined ? state.trim() : undefined,
             isActive
         };
+
+        if (name) {
+            const cleanName = name.replace(/\s+/g, ' ').trim();
+            const escaped = cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const existing = await College.findOne({ _id: { $ne: id }, name: new RegExp(`^${escaped}$`, 'i') });
+            if (existing) {
+                return res.status(400).json({ message: `Another institution with the name "${cleanName}" already exists` });
+            }
+            updateData.name = cleanName;
+        }
 
         if (instituteType) updateData.instituteType = instituteType;
 
@@ -366,8 +382,15 @@ exports.adminCreateDepartment = async (req, res) => {
         const { name, code, isActive } = req.body;
         if (!name || !name.trim()) return res.status(400).json({ message: "Department name is required" });
 
+        const cleanName = name.replace(/\s+/g, ' ').trim();
+        const escaped = cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const existing = await Department.findOne({ name: new RegExp(`^${escaped}$`, 'i') });
+        if (existing) {
+            return res.status(400).json({ message: `A department with the name "${cleanName}" already exists` });
+        }
+
         const item = await Department.create({
-            name: name.trim(),
+            name: cleanName,
             code: code ? code.trim() : "",
             isActive: isActive !== false
         });
@@ -382,13 +405,25 @@ exports.adminUpdateDepartment = async (req, res) => {
     try {
         const { id } = req.params;
         const { name, code, isActive } = req.body;
+
+        const updateData = {
+            code: code !== undefined ? code.trim() : undefined,
+            isActive
+        };
+
+        if (name) {
+            const cleanName = name.replace(/\s+/g, ' ').trim();
+            const escaped = cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const existing = await Department.findOne({ _id: { $ne: id }, name: new RegExp(`^${escaped}$`, 'i') });
+            if (existing) {
+                return res.status(400).json({ message: `Another department with the name "${cleanName}" already exists` });
+            }
+            updateData.name = cleanName;
+        }
+
         const item = await Department.findByIdAndUpdate(
             id,
-            {
-                name: name ? name.trim() : undefined,
-                code: code !== undefined ? code.trim() : undefined,
-                isActive
-            },
+            updateData,
             { returnDocument: 'after' }
         );
         res.status(200).json({ success: true, message: "Department updated successfully", item });
@@ -456,8 +491,15 @@ exports.adminCreateBranch = async (req, res) => {
         const { name, degree, isActive } = req.body;
         if (!name || !name.trim()) return res.status(400).json({ message: "Branch name is required" });
 
+        const cleanName = name.replace(/\s+/g, ' ').trim();
+        const escaped = cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const existing = await Branch.findOne({ name: new RegExp(`^${escaped}$`, 'i') });
+        if (existing) {
+            return res.status(400).json({ message: `A branch with the name "${cleanName}" already exists` });
+        }
+
         const item = await Branch.create({
-            name: name.trim(),
+            name: cleanName,
             degree: degree ? degree.trim() : "",
             isActive: isActive !== false
         });
@@ -472,13 +514,25 @@ exports.adminUpdateBranch = async (req, res) => {
     try {
         const { id } = req.params;
         const { name, degree, isActive } = req.body;
+
+        const updateData = {
+            degree: degree !== undefined ? degree.trim() : undefined,
+            isActive
+        };
+
+        if (name) {
+            const cleanName = name.replace(/\s+/g, ' ').trim();
+            const escaped = cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const existing = await Branch.findOne({ _id: { $ne: id }, name: new RegExp(`^${escaped}$`, 'i') });
+            if (existing) {
+                return res.status(400).json({ message: `Another branch with the name "${cleanName}" already exists` });
+            }
+            updateData.name = cleanName;
+        }
+
         const item = await Branch.findByIdAndUpdate(
             id,
-            {
-                name: name ? name.trim() : undefined,
-                degree: degree !== undefined ? degree.trim() : undefined,
-                isActive
-            },
+            updateData,
             { returnDocument: 'after' }
         );
         res.status(200).json({ success: true, message: "Branch updated successfully", item });
@@ -551,10 +605,13 @@ exports.adminBulkUploadCSV = async (req, res) => {
         let skippedCount = 0;
         const errors = [];
 
-        const uniOps = [];
         const collegeOps = [];
         const deptOps = [];
         const branchOps = [];
+
+        const seenColleges = new Set();
+        const seenDepts = new Set();
+        const seenBranches = new Set();
 
         for (let i = 1; i < lines.length; i++) {
             const row = parseCSVRow(lines[i]);
@@ -574,14 +631,20 @@ exports.adminBulkUploadCSV = async (req, res) => {
                 continue;
             }
 
+            const cleanName = name.trim();
+            const nameKey = cleanName.toLowerCase();
+
             const isActive = rowData.isactive !== undefined && rowData.isactive !== "" 
                 ? (rowData.isactive.toLowerCase() !== "false" && rowData.isactive !== "0") 
                 : true;
 
             if (rowType.includes("uni") || rowType.includes("camp") || rowType.includes("coll") || rowType.includes("inst")) {
+                if (seenColleges.has(nameKey)) continue;
+                seenColleges.add(nameKey);
+
                 const inferredType = rowData.institutetype || rowData.type || (rowType.includes("uni") ? "university" : rowType.includes("inst") ? "institute" : "college");
                 const collegeSet = {
-                    name,
+                    name: cleanName,
                     instituteType: inferredType,
                     code: rowData.code || "",
                     city: rowData.city || "",
@@ -591,18 +654,21 @@ exports.adminBulkUploadCSV = async (req, res) => {
 
                 collegeOps.push({
                     updateOne: {
-                        filter: { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+                        filter: { name: cleanName },
                         update: { $set: collegeSet },
                         upsert: true
                     }
                 });
             } else if (rowType.includes("dept") || rowType.includes("depart") || rowType.includes("school") || rowType.includes("facult")) {
+                if (seenDepts.has(nameKey)) continue;
+                seenDepts.add(nameKey);
+
                 deptOps.push({
                     updateOne: {
-                        filter: { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+                        filter: { name: cleanName },
                         update: {
                             $set: {
-                                name,
+                                name: cleanName,
                                 code: rowData.code || "",
                                 isActive
                             }
@@ -611,12 +677,15 @@ exports.adminBulkUploadCSV = async (req, res) => {
                     }
                 });
             } else if (rowType.includes("branch") || rowType.includes("course") || rowType.includes("major") || rowType.includes("prog") || rowType.includes("spec")) {
+                if (seenBranches.has(nameKey)) continue;
+                seenBranches.add(nameKey);
+
                 branchOps.push({
                     updateOne: {
-                        filter: { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+                        filter: { name: cleanName },
                         update: {
                             $set: {
-                                name,
+                                name: cleanName,
                                 degree: rowData.degree || rowData.program || rowData.course || "",
                                 isActive
                             }
@@ -630,19 +699,32 @@ exports.adminBulkUploadCSV = async (req, res) => {
             }
         }
 
-        // Execute bulkWrite in parallel for each category
-        const [collegeRes, deptRes, branchRes] = await Promise.all([
-            collegeOps.length > 0 ? College.bulkWrite(collegeOps, { ordered: false }) : null,
-            deptOps.length > 0 ? Department.bulkWrite(deptOps, { ordered: false }) : null,
-            branchOps.length > 0 ? Branch.bulkWrite(branchOps, { ordered: false }) : null
-        ]);
-
-        const calcUpserts = (resObj) => {
-            if (!resObj) return 0;
-            return (resObj.upsertedCount || 0) + (resObj.modifiedCount || 0) + (resObj.matchedCount || 0);
+        // Helper to execute bulkWrite in chunks (prevents MongoDB wire size / batch overflow on 50k+ items)
+        const executeChunkedBulkWrite = async (model, ops, batchSize = 1000) => {
+            if (!ops || ops.length === 0) return 0;
+            let totalProcessed = 0;
+            for (let i = 0; i < ops.length; i += batchSize) {
+                const chunk = ops.slice(i, i + batchSize);
+                try {
+                    const res = await model.bulkWrite(chunk, { ordered: false });
+                    totalProcessed += (res.upsertedCount || 0) + (res.modifiedCount || 0) + (res.matchedCount || 0) + (res.insertedCount || 0);
+                } catch (err) {
+                    if (err.result) {
+                        totalProcessed += (err.result.nUpserted || err.result.upsertedCount || 0) + (err.result.nModified || err.result.modifiedCount || 0) + (err.result.nMatched || err.result.matchedCount || 0) + (err.result.nInserted || 0);
+                    }
+                }
+            }
+            return totalProcessed;
         };
 
-        importedCount = calcUpserts(collegeRes) + calcUpserts(deptRes) + calcUpserts(branchRes);
+        // Execute bulkWrite in parallel for each category with batching
+        const [collegeCount, deptCount, branchCount] = await Promise.all([
+            executeChunkedBulkWrite(College, collegeOps, 1000),
+            executeChunkedBulkWrite(Department, deptOps, 1000),
+            executeChunkedBulkWrite(Branch, branchOps, 1000)
+        ]);
+
+        importedCount = collegeCount + deptCount + branchCount;
 
         res.status(200).json({
             success: true,
@@ -650,9 +732,9 @@ exports.adminBulkUploadCSV = async (req, res) => {
             importedCount,
             skippedCount,
             breakdown: {
-                colleges: calcUpserts(collegeRes),
-                departments: calcUpserts(deptRes),
-                branches: calcUpserts(branchRes)
+                colleges: collegeCount,
+                departments: deptCount,
+                branches: branchCount
             },
             errors: errors.slice(0, 10)
         });
