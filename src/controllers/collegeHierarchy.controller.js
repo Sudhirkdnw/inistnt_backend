@@ -113,6 +113,9 @@ exports.getBranches = async (req, res) => {
 exports.adminGetUniversities = async (req, res) => {
     try {
         const query = (req.query.q || "").trim();
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = req.query.limit === 'all' ? 0 : Math.min(parseInt(req.query.limit) || 25, 200);
+
         let filter = {};
         if (query) {
             const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -120,8 +123,30 @@ exports.adminGetUniversities = async (req, res) => {
             filter.$or = [{ name: searchRegex }, { city: searchRegex }, { state: searchRegex }];
         }
 
-        const list = await University.find(filter).sort({ name: 1 }).lean();
-        res.status(200).json({ success: true, list });
+        const [total, activeCount, list] = await Promise.all([
+            University.countDocuments(filter),
+            University.countDocuments({ ...filter, isActive: true }),
+            University.find(filter)
+                .sort({ name: 1 })
+                .skip(limit > 0 ? (page - 1) * limit : 0)
+                .limit(limit > 0 ? limit : 0)
+                .lean()
+        ]);
+
+        const pages = limit > 0 ? Math.ceil(total / limit) || 1 : 1;
+
+        res.status(200).json({
+            success: true,
+            list,
+            total,
+            activeCount,
+            pagination: {
+                page,
+                limit: limit > 0 ? limit : total,
+                total,
+                pages
+            }
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -181,6 +206,8 @@ exports.adminGetCampuses = async (req, res) => {
     try {
         const query = (req.query.q || "").trim();
         const rawUni = req.query.universityId || req.query.university;
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = req.query.limit === 'all' ? 0 : Math.min(parseInt(req.query.limit) || 25, 200);
         let filter = {};
 
         if (rawUni && rawUni.trim()) {
@@ -202,11 +229,31 @@ exports.adminGetCampuses = async (req, res) => {
             }
         }
 
-        const list = await College.find(filter)
-            .populate("university", "name _id city state isActive")
-            .sort({ name: 1 })
-            .lean();
-        res.status(200).json({ success: true, list });
+        const [total, activeCount, list] = await Promise.all([
+            College.countDocuments(filter),
+            College.countDocuments({ ...filter, isActive: true }),
+            College.find(filter)
+                .populate("university", "name _id city state isActive")
+                .sort({ name: 1 })
+                .skip(limit > 0 ? (page - 1) * limit : 0)
+                .limit(limit > 0 ? limit : 0)
+                .lean()
+        ]);
+
+        const pages = limit > 0 ? Math.ceil(total / limit) || 1 : 1;
+
+        res.status(200).json({
+            success: true,
+            list,
+            total,
+            activeCount,
+            pagination: {
+                page,
+                limit: limit > 0 ? limit : total,
+                total,
+                pages
+            }
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -275,15 +322,40 @@ exports.adminDeleteCampus = async (req, res) => {
 exports.adminGetDepartments = async (req, res) => {
     try {
         const query = (req.query.q || "").trim();
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = req.query.limit === 'all' ? 0 : Math.min(parseInt(req.query.limit) || 25, 200);
         let filter = {};
+
         if (query) {
             const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const searchRegex = new RegExp(escaped, "i");
             filter.$or = [{ name: searchRegex }, { code: searchRegex }];
         }
 
-        const list = await Department.find(filter).sort({ name: 1 }).lean();
-        res.status(200).json({ success: true, list });
+        const [total, activeCount, list] = await Promise.all([
+            Department.countDocuments(filter),
+            Department.countDocuments({ ...filter, isActive: true }),
+            Department.find(filter)
+                .sort({ name: 1 })
+                .skip(limit > 0 ? (page - 1) * limit : 0)
+                .limit(limit > 0 ? limit : 0)
+                .lean()
+        ]);
+
+        const pages = limit > 0 ? Math.ceil(total / limit) || 1 : 1;
+
+        res.status(200).json({
+            success: true,
+            list,
+            total,
+            activeCount,
+            pagination: {
+                page,
+                limit: limit > 0 ? limit : total,
+                total,
+                pages
+            }
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -340,15 +412,40 @@ exports.adminDeleteDepartment = async (req, res) => {
 exports.adminGetBranches = async (req, res) => {
     try {
         const query = (req.query.q || "").trim();
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = req.query.limit === 'all' ? 0 : Math.min(parseInt(req.query.limit) || 25, 200);
         let filter = {};
+
         if (query) {
             const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const searchRegex = new RegExp(escaped, "i");
             filter.$or = [{ name: searchRegex }, { degree: searchRegex }];
         }
 
-        const list = await Branch.find(filter).sort({ name: 1 }).lean();
-        res.status(200).json({ success: true, list });
+        const [total, activeCount, list] = await Promise.all([
+            Branch.countDocuments(filter),
+            Branch.countDocuments({ ...filter, isActive: true }),
+            Branch.find(filter)
+                .sort({ name: 1 })
+                .skip(limit > 0 ? (page - 1) * limit : 0)
+                .limit(limit > 0 ? limit : 0)
+                .lean()
+        ]);
+
+        const pages = limit > 0 ? Math.ceil(total / limit) || 1 : 1;
+
+        res.status(200).json({
+            success: true,
+            list,
+            total,
+            activeCount,
+            pagination: {
+                page,
+                limit: limit > 0 ? limit : total,
+                total,
+                pages
+            }
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
