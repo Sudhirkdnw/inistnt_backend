@@ -552,6 +552,56 @@ exports.adminDeleteBranch = async (req, res) => {
     }
 };
 
+// ── BULK DELETE ENGINE ──────────────────────────────────────────────────────
+exports.adminBulkDelete = async (req, res) => {
+    try {
+        const category = (req.params.category || req.body.category || "colleges").toLowerCase();
+        const { ids, clearAll } = req.body;
+
+        let targetModel = College;
+        let categoryName = "Colleges / Institutions";
+        if (category === "departments" || category === "department") {
+            targetModel = Department;
+            categoryName = "Departments";
+        } else if (category === "branches" || category === "branch") {
+            targetModel = Branch;
+            categoryName = "Branches";
+        } else if (category === "universities" || category === "university") {
+            targetModel = University;
+            categoryName = "Universities";
+        }
+
+        if (clearAll === true) {
+            const resDelete = await targetModel.deleteMany({});
+            return res.status(200).json({
+                success: true,
+                message: `All ${resDelete.deletedCount} ${categoryName} deleted successfully.`,
+                deletedCount: resDelete.deletedCount
+            });
+        }
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ message: "No items selected for deletion" });
+        }
+
+        const validIds = ids.filter(id => mongoose.Types.ObjectId.isValid(id));
+        if (validIds.length === 0) {
+            return res.status(400).json({ message: "Invalid ID format provided" });
+        }
+
+        const resDelete = await targetModel.deleteMany({ _id: { $in: validIds } });
+
+        return res.status(200).json({
+            success: true,
+            message: `Successfully deleted ${resDelete.deletedCount} ${categoryName}.`,
+            deletedCount: resDelete.deletedCount
+        });
+    } catch (err) {
+        console.error("Bulk delete hierarchy error:", err);
+        res.status(500).json({ message: "Failed to delete items: " + err.message });
+    }
+};
+
 /**
  * CSV Line Parser supporting quoted fields with commas
  */

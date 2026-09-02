@@ -71,7 +71,7 @@ class EmailQueue {
                         "metadata.lockedBy": `backend-${process.pid}`
                     }
                 },
-                { new: true }
+                { returnDocument: 'after' }
             );
 
             if (!dbLog) {

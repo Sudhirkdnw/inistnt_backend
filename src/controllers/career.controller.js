@@ -413,7 +413,7 @@ exports.adminToggleJobStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid status' });
     }
 
-    const job = await CareerJob.findByIdAndUpdate(id, { status }, { new: true });
+    const job = await CareerJob.findByIdAndUpdate(id, { status }, { returnDocument: 'after' });
     if (!job) {
       return res.status(404).json({ success: false, message: 'Job opening not found' });
     }

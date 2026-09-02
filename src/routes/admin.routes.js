@@ -217,11 +217,20 @@ router.post("/campus-connect/communities", requirePermission("userManagement", "
 router.put("/campus-connect/communities/:id", requirePermission("userManagement", "update"), communityUpload, adminCommunityCtrl.updateCommunity);
 router.delete("/campus-connect/communities/:id", requirePermission("userManagement", "delete"), adminCommunityCtrl.deleteCommunity);
 
-// Hierarchy Bulk CSV Upload & Export
+// Hierarchy Bulk CSV Upload & Export & Bulk Delete
 router.post("/hierarchy/bulk-csv", requirePermission("userManagement", "create"), upload.single("csv"), collegeHierarchyAdmin.adminBulkUploadCSV);
 router.post("/hierarchy/:category/bulk-csv", requirePermission("userManagement", "create"), upload.single("csv"), collegeHierarchyAdmin.adminBulkUploadCSV);
 router.get("/hierarchy/export-csv", requirePermission("userManagement", "view"), collegeHierarchyAdmin.adminExportCSV);
 router.get("/hierarchy/:category/export-csv", requirePermission("userManagement", "view"), collegeHierarchyAdmin.adminExportCSV);
+router.post("/hierarchy/bulk-delete", requirePermission("userManagement", "delete"), collegeHierarchyAdmin.adminBulkDelete);
+router.post("/hierarchy/:category/bulk-delete", requirePermission("userManagement", "delete"), collegeHierarchyAdmin.adminBulkDelete);
+router.delete("/hierarchy/bulk-delete", requirePermission("userManagement", "delete"), collegeHierarchyAdmin.adminBulkDelete);
+
+// Hierarchy Colleges (Unified Institutions) CRUD
+router.get("/hierarchy/colleges", requirePermission("userManagement", "view"), collegeHierarchyAdmin.adminGetCampuses);
+router.post("/hierarchy/colleges", requirePermission("userManagement", "create"), collegeHierarchyAdmin.adminCreateCampus);
+router.put("/hierarchy/colleges/:id", requirePermission("userManagement", "update"), collegeHierarchyAdmin.adminUpdateCampus);
+router.delete("/hierarchy/colleges/:id", requirePermission("userManagement", "delete"), collegeHierarchyAdmin.adminDeleteCampus);
 
 // Hierarchy Universities CRUD
 router.get("/hierarchy/universities", requirePermission("userManagement", "view"), collegeHierarchyAdmin.adminGetUniversities);
@@ -229,7 +238,7 @@ router.post("/hierarchy/universities", requirePermission("userManagement", "crea
 router.put("/hierarchy/universities/:id", requirePermission("userManagement", "update"), collegeHierarchyAdmin.adminUpdateUniversity);
 router.delete("/hierarchy/universities/:id", requirePermission("userManagement", "delete"), collegeHierarchyAdmin.adminDeleteUniversity);
 
-// Hierarchy Campuses CRUD
+// Hierarchy Campuses CRUD (Alias)
 router.get("/hierarchy/campuses", requirePermission("userManagement", "view"), collegeHierarchyAdmin.adminGetCampuses);
 router.post("/hierarchy/campuses", requirePermission("userManagement", "create"), collegeHierarchyAdmin.adminCreateCampus);
 router.put("/hierarchy/campuses/:id", requirePermission("userManagement", "update"), collegeHierarchyAdmin.adminUpdateCampus);
