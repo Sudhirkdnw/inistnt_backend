@@ -3,6 +3,7 @@ const CampusConnectAction = require("../models/campusConnectAction.model");
 const userModel = require("../models/user.model");
 const notificationModel = require("../models/notification.model");
 const { uploadImage, deleteImage } = require("../utils/cloudinary");
+const { invalidateUserCache } = require("../middlewares/cacheMiddleware");
 
 // ─── Compatibility Score Calculator ──────────────────────────────────────────
 function computeCompatibility(myProfile, myUser, theirProfile, theirUser) {
@@ -10,64 +11,91 @@ function computeCompatibility(myProfile, myUser, theirProfile, theirUser) {
     let score = 0;
     const reasons = [];
 
-    const weightCollege = parseFloat(getSetting("campus_connect_weight_college", 30));
-    const weightBranch = parseFloat(getSetting("campus_connect_weight_branch", 15));
-    const weightSkills = parseFloat(getSetting("campus_connect_weight_skills", 20));
-    const weightInterests = parseFloat(getSetting("campus_connect_weight_interests", 15));
-    const weightGoals = parseFloat(getSetting("campus_connect_weight_goals", 10));
-    const weightIntents = parseFloat(getSetting("campus_connect_weight_intents", 10));
+    let weightCollege = parseFloat(getSetting("campus_connect_weight_college", 30));
+    let weightBranch = parseFloat(getSetting("campus_connect_weight_branch", 15));
+    let weightSkills = parseFloat(getSetting("campus_connect_weight_skills", 20));
+    let weightInterests = parseFloat(getSetting("campus_connect_weight_interests", 15));
+    let weightGoals = parseFloat(getSetting("campus_connect_weight_goals", 10));
+    let weightIntents = parseFloat(getSetting("campus_connect_weight_intents", 10));
+
+    // Dynamic AI Priorities reordering boost
+    const priorities = myProfile?.aiPriorities || ["skills", "interests", "goals", "branch", "semester", "communities", "mutuals"];
+    const priorityMultipliers = {};
+    priorities.forEach((key, index) => {
+        priorityMultipliers[key] = Math.max(0.7, 1.5 - (index * 0.12));
+    });
+
+    if (priorityMultipliers.branch) weightBranch *= priorityMultipliers.branch;
+    if (priorityMultipliers.skills) weightSkills *= priorityMultipliers.skills;
+    if (priorityMultipliers.interests) weightInterests *= priorityMultipliers.interests;
+    if (priorityMultipliers.goals) weightGoals *= priorityMultipliers.goals;
 
     // Same college
     if (
-        myUser.collegeName &&
-        theirUser.collegeName &&
+        myUser?.collegeName &&
+        theirUser?.collegeName &&
         myUser.collegeName.trim().toLowerCase() === theirUser.collegeName.trim().toLowerCase()
     ) {
         score += weightCollege;
         reasons.push("Same College");
     }
 
-    // Same branch
-    if (
-        myUser.branch &&
-        theirUser.branch &&
+    // Same branch or preferred branch
+    const targetBranches = (myProfile?.preferredBranches && myProfile.preferredBranches.length > 0)
+        ? myProfile.preferredBranches.map(b => b.toLowerCase())
+        : (myUser?.branch ? [myUser.branch.toLowerCase()] : []);
+
+    if (theirUser?.branch && targetBranches.includes(theirUser.branch.trim().toLowerCase())) {
+        score += weightBranch;
+        reasons.push("Target Branch");
+    } else if (
+        myUser?.branch &&
+        theirUser?.branch &&
         myUser.branch.trim().toLowerCase() === theirUser.branch.trim().toLowerCase()
     ) {
         score += weightBranch;
         reasons.push("Same Branch");
     }
 
-    // Shared skills
-    const sharedSkills = (myUser.skills || []).filter(s =>
-        (theirUser.skills || []).map(x => x.toLowerCase()).includes(s.toLowerCase())
-    );
+    // Shared / preferred skills
+    const mySkills = Array.from(new Set([
+        ...(myUser?.skills || []).map(s => s.toLowerCase()),
+        ...(myProfile?.preferredSkills || []).map(s => s.toLowerCase())
+    ]));
+    const theirSkills = (theirUser?.skills || []).map(x => x.toLowerCase());
+    const sharedSkills = mySkills.filter(s => theirSkills.includes(s));
     if (sharedSkills.length > 0 && weightSkills > 0) {
-        const skillPts = Math.min(sharedSkills.length * (weightSkills / 5), weightSkills);
+        const skillPts = Math.min(sharedSkills.length * (weightSkills / 4), weightSkills);
         score += skillPts;
-        reasons.push(`${sharedSkills.slice(0, 3).join(", ")} Skills`);
+        reasons.push(`${sharedSkills.slice(0, 3).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(", ")} Skills`);
     }
 
-    // Shared interests
-    const sharedInterests = (myUser.interests || []).filter(i =>
-        (theirUser.interests || []).map(x => x.toLowerCase()).includes(i.toLowerCase())
-    );
+    // Shared / preferred interests
+    const myInterests = Array.from(new Set([
+        ...(myUser?.interests || []).map(i => i.toLowerCase()),
+        ...(myProfile?.preferredInterests || []).map(i => i.toLowerCase())
+    ]));
+    const theirInterests = (theirUser?.interests || []).map(x => x.toLowerCase());
+    const sharedInterests = myInterests.filter(i => theirInterests.includes(i));
     if (sharedInterests.length > 0 && weightInterests > 0) {
-        score += Math.min(sharedInterests.length * (weightInterests / 5), weightInterests);
-        reasons.push(`${sharedInterests.slice(0, 2).join(", ")} Interests`);
+        score += Math.min(sharedInterests.length * (weightInterests / 3), weightInterests);
+        reasons.push(`${sharedInterests.slice(0, 2).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(", ")} Interests`);
     }
 
-    // Shared goals
-    const sharedGoals = (myUser.goals || []).filter(g =>
-        (theirUser.goals || []).includes(g)
-    );
+    // Shared / preferred goals
+    const myGoals = Array.from(new Set([
+        ...(myUser?.goals || []),
+        ...(myProfile?.preferredGoals || [])
+    ]));
+    const sharedGoals = myGoals.filter(g => (theirUser?.goals || []).includes(g));
     if (sharedGoals.length > 0 && weightGoals > 0) {
         score += Math.min(sharedGoals.length * (weightGoals / 2), weightGoals);
         reasons.push("Shared Goals");
     }
 
     // Shared intents
-    const sharedIntents = (myProfile.intents || []).filter(i =>
-        (theirProfile.intents || []).includes(i)
+    const sharedIntents = (myProfile?.intents || []).filter(i =>
+        (theirProfile?.intents || []).includes(i)
     );
     if (sharedIntents.length > 0 && weightIntents > 0) {
         score += Math.min(sharedIntents.length * (weightIntents / 2), weightIntents);
@@ -157,16 +185,17 @@ async function getDiscovery(req, res) {
         }
 
         const userId = req.user._id;
-        const myProfile = await CampusConnectProfile.findOne({ user: userId }).lean();
+
+        const [myProfile, myUser, actedOn] = await Promise.all([
+            CampusConnectProfile.findOne({ user: userId }).lean(),
+            userModel.findById(userId).select("collegeName branch semester skills interests goals photos").lean(),
+            CampusConnectAction.find({ actor: userId }).select("targetUser").lean()
+        ]);
 
         if (!myProfile) {
             return res.status(400).json({ message: "Please complete your Campus Connect profile first." });
         }
 
-        const myUser = await userModel.findById(userId).select("collegeName branch semester skills interests goals photos").lean();
-
-        // Fetch all user IDs already acted on by this user
-        const actedOn = await CampusConnectAction.find({ actor: userId }).select("targetUser").lean();
         const actedOnIds = actedOn.map(a => a.targetUser);
 
         // Build location-aware query
@@ -197,10 +226,17 @@ async function getDiscovery(req, res) {
 
         // ── Gender Preference filter ──────────────────────────────────
         if (myProfile.preferredGender && myProfile.preferredGender !== "all") {
-            const targetGender = myProfile.preferredGender.toLowerCase();
+            const targetGender = myProfile.preferredGender.trim().toLowerCase();
             candidates = candidates.filter(c => {
                 if (!c.user || !c.user.gender) return false;
-                return c.user.gender.trim().toLowerCase() === targetGender;
+                const g = c.user.gender.trim().toLowerCase();
+                if (targetGender === "female") {
+                    return g === "female" || g === "woman" || g === "women" || g === "f";
+                }
+                if (targetGender === "male") {
+                    return g === "male" || g === "man" || g === "men" || g === "m";
+                }
+                return g === targetGender;
             });
         }
 
@@ -222,10 +258,25 @@ async function getDiscovery(req, res) {
             return { ...c, compatibility: score, compatibilityReasons: reasons };
         });
 
-        // ── Sort by compatibility score (desc) ─────────────────────────
-        scored.sort((a, b) => b.compatibility - a.compatibility);
+        // ── Real Exploring Count & Real User Avatars (Cached for 60s) ──
+        const cache = require("../service/cache.service");
+        const exploringData = await cache.getOrSet("campus_connect:exploring_meta", 60, async () => {
+            const total = await CampusConnectProfile.countDocuments({ isActive: true }).catch(() => 0);
+            const activeWithAvatars = await CampusConnectProfile.find({ isActive: true })
+                .select("user")
+                .populate("user", "avatar username fullName")
+                .limit(10)
+                .lean()
+                .catch(() => []);
+            const avatars = (activeWithAvatars || []).map(p => p.user?.avatar).filter(Boolean);
+            return { totalExploring: total, exploringAvatars: avatars };
+        });
 
-        return res.status(200).json({ candidates: scored });
+        return res.status(200).json({ 
+            candidates: scored,
+            totalExploring: Math.max(exploringData.totalExploring || 0, scored.length),
+            exploringAvatars: exploringData.exploringAvatars || []
+        });
     } catch (err) {
         console.error("getDiscovery error:", err);
         return res.status(500).json({ message: "Server error" });
@@ -297,8 +348,10 @@ async function sendConnect(req, res) {
         const userId = req.user._id;
         const { targetUserId } = req.params;
 
-        const myProfile = await CampusConnectProfile.findOne({ user: userId });
-        const theirProfile = await CampusConnectProfile.findOne({ user: targetUserId });
+        const [myProfile, theirProfile] = await Promise.all([
+            CampusConnectProfile.findOne({ user: userId }).lean(),
+            CampusConnectProfile.findOne({ user: targetUserId }).lean()
+        ]);
 
         if (!myProfile || !theirProfile) {
             return res.status(404).json({ message: "Profile not found" });
@@ -310,105 +363,116 @@ async function sendConnect(req, res) {
             return res.status(403).json(limitCheck);
         }
 
-        // Upsert action
-        await CampusConnectAction.findOneAndUpdate(
-            { actor: userId, targetUser: targetUserId },
-            { action: "connect" },
-            { upsert: true, returnDocument: "after" }
-        );
-
-        // Check for mutual connect (both connected)
-        const reciprocal = await CampusConnectAction.findOne({
-            actor: targetUserId,
-            targetUser: userId,
-            action: "connect"
-        });
+        // Upsert action and check for reciprocal in parallel
+        const [, reciprocal, meUser] = await Promise.all([
+            CampusConnectAction.findOneAndUpdate(
+                { actor: userId, targetUser: targetUserId },
+                { action: "connect" },
+                { upsert: true, returnDocument: "after" }
+            ),
+            CampusConnectAction.findOne({
+                actor: targetUserId,
+                targetUser: userId,
+                action: "connect"
+            }).lean(),
+            userModel.findById(userId).select("username fullName avatar").lean()
+        ]);
 
         const isMutual = !!reciprocal;
-        const meUser = await userModel.findById(userId).select("username fullName avatar").lean();
 
         if (isMutual) {
-            // Create friendship/connection in User model
-            await userModel.findByIdAndUpdate(userId, {
-                $addToSet: { followers: targetUserId, following: targetUserId }
-            });
-            await userModel.findByIdAndUpdate(targetUserId, {
-                $addToSet: { followers: userId, following: userId }
-            });
+            // Update mutual relationships in parallel
+            Promise.all([
+                userModel.findByIdAndUpdate(userId, {
+                    $addToSet: { followers: targetUserId, following: targetUserId }
+                }),
+                userModel.findByIdAndUpdate(targetUserId, {
+                    $addToSet: { followers: userId, following: userId }
+                })
+            ]).catch(err => console.error("Error updating mutual followers:", err));
 
-            const messageText = `🎉 ${meUser.fullName || meUser.username} accepted your connection request.`;
-
-            // Mutual connection — notify User A (the original sender/targetUserId)
-            await notificationModel.create({
-                recipient: targetUserId,
-                sender: userId,
-                type: "campus_connect_mutual",
-                message: messageText
+            // Respond to client immediately
+            res.status(200).json({
+                message: "You're now connected! 🤝",
+                isMutual: true
             });
 
-            const io = req.app.get("io");
-            if (io) {
-                const payload = {
-                    type: "campus_connect_mutual",
-                    sender: { _id: meUser._id, username: meUser.username, fullName: meUser.fullName, avatar: meUser.avatar },
-                    message: messageText,
-                    createdAt: new Date().toISOString()
-                };
-                io.to(String(targetUserId)).emit("campus-connect-mutual", payload);
-                io.to(String(targetUserId)).emit("new-notification", payload);
-            }
+            // Handle notifications & socket asynchronously
+            (async () => {
+                try {
+                    const messageText = `🎉 ${meUser.fullName || meUser.username} accepted your connection request.`;
+                    await notificationModel.create({
+                        recipient: targetUserId,
+                        sender: userId,
+                        type: "campus_connect_mutual",
+                        message: messageText
+                    });
 
-            try {
-                const { sendPushNotificationToUser } = require("../utils/pushNotifications");
-                sendPushNotificationToUser(
-                    targetUserId,
-                    "Connection Request Accepted! 🎉",
-                    messageText,
-                    { type: "campus_connect_mutual", userId: userId.toString() }
-                );
-            } catch (pushErr) {
-                console.error("Push notification failed in sendConnect mutual:", pushErr);
-            }
+                    const io = req.app.get("io");
+                    if (io) {
+                        const payload = {
+                            type: "campus_connect_mutual",
+                            sender: { _id: meUser._id, username: meUser.username, fullName: meUser.fullName, avatar: meUser.avatar },
+                            message: messageText,
+                            createdAt: new Date().toISOString()
+                        };
+                        io.to(String(targetUserId)).emit("campus-connect-mutual", payload);
+                        io.to(String(targetUserId)).emit("new-notification", payload);
+                    }
+
+                    const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+                    sendPushNotificationToUser(
+                        targetUserId,
+                        "Connection Request Accepted! 🎉",
+                        messageText,
+                        { type: "campus_connect_mutual", userId: userId.toString() }
+                    );
+                } catch (pushErr) {
+                    console.error("Push notification failed in sendConnect mutual:", pushErr);
+                }
+            })();
         } else {
-            const messageText = `🤝 ${meUser.fullName || meUser.username} wants to connect with you.`;
-
-            // One-way connect — notify target
-            await notificationModel.create({
-                recipient: targetUserId,
-                sender: userId,
-                type: "campus_connect_request",
-                message: messageText
+            // Respond to client immediately
+            res.status(200).json({
+                message: "Connection request sent! 👋",
+                isMutual: false
             });
 
-            const io = req.app.get("io");
-            if (io) {
-                const payload = {
-                    type: "campus_connect_request",
-                    sender: { _id: meUser._id, username: meUser.username, fullName: meUser.fullName, avatar: meUser.avatar },
-                    message: messageText,
-                    createdAt: new Date().toISOString()
-                };
-                io.to(String(targetUserId)).emit("campus-connect-request", payload);
-                io.to(String(targetUserId)).emit("new-notification", payload);
-            }
+            // Handle notifications & socket asynchronously
+            (async () => {
+                try {
+                    const messageText = `🤝 ${meUser.fullName || meUser.username} wants to connect with you.`;
+                    await notificationModel.create({
+                        recipient: targetUserId,
+                        sender: userId,
+                        type: "campus_connect_request",
+                        message: messageText
+                    });
 
-            try {
-                const { sendPushNotificationToUser } = require("../utils/pushNotifications");
-                sendPushNotificationToUser(
-                    targetUserId,
-                    "New Connection Request 🤝",
-                    messageText,
-                    { type: "campus_connect_request", userId: userId.toString() }
-                );
-            } catch (pushErr) {
-                console.error("Push notification failed in sendConnect request:", pushErr);
-            }
+                    const io = req.app.get("io");
+                    if (io) {
+                        const payload = {
+                            type: "campus_connect_request",
+                            sender: { _id: meUser._id, username: meUser.username, fullName: meUser.fullName, avatar: meUser.avatar },
+                            message: messageText,
+                            createdAt: new Date().toISOString()
+                        };
+                        io.to(String(targetUserId)).emit("campus-connect-request", payload);
+                        io.to(String(targetUserId)).emit("new-notification", payload);
+                    }
+
+                    const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+                    sendPushNotificationToUser(
+                        targetUserId,
+                        "New Connection Request 🤝",
+                        messageText,
+                        { type: "campus_connect_request", userId: userId.toString() }
+                    );
+                } catch (pushErr) {
+                    console.error("Push notification failed in sendConnect request:", pushErr);
+                }
+            })();
         }
-
-        return res.status(200).json({
-            message: isMutual ? "You're now connected! 🤝" : "Connection request sent! 👋",
-            isMutual
-        });
     } catch (err) {
         console.error("sendConnect error:", err);
         return res.status(500).json({ message: "Server error" });
@@ -572,16 +636,18 @@ async function passProfile(req, res) {
     }
 }
 
-// ─── Get My Connections (mutual connects) ─────────────────────────────────────
+// ─── Get My Connections (mutual connects + incoming requests + saved) ─────────────────────────────────────
 async function getConnections(req, res) {
     try {
         const userId = req.user._id;
 
-        // Find everyone I connected with
-        const myConnects = await CampusConnectAction.find({ actor: userId, action: "connect" }).select("targetUser").lean();
-        const myConnectIds = myConnects.map(a => a.targetUser);
+        // 1. Actions performed by ME
+        const myActions = await CampusConnectAction.find({ actor: userId }).select("targetUser action").lean();
+        const myConnectIds = myActions.filter(a => a.action === "connect").map(a => a.targetUser);
+        const myPassIds = new Set(myActions.filter(a => a.action === "pass").map(a => String(a.targetUser)));
+        const savedIds = myActions.filter(a => a.action === "save").map(a => a.targetUser);
 
-        // Find mutual connects
+        // 2. Mutual connects (both connected with each other)
         const mutualActions = await CampusConnectAction.find({
             actor: { $in: myConnectIds },
             targetUser: userId,
@@ -590,16 +656,26 @@ async function getConnections(req, res) {
 
         const mutualIdSet = new Set(mutualActions.map(a => String(a.actor)));
 
-        // Also get saved profiles
-        const savedActions = await CampusConnectAction.find({ actor: userId, action: "save" }).select("targetUser").lean();
-        const savedIds = savedActions.map(a => a.targetUser);
+        // 3. Incoming connection requests (students who connected with ME, but I have not connected with them or passed them yet)
+        const incomingConnectActions = await CampusConnectAction.find({
+            targetUser: userId,
+            action: "connect",
+            actor: { $nin: myConnectIds }
+        }).select("actor createdAt").lean();
 
-        const [connectProfiles, savedProfiles] = await Promise.all([
+        const pendingIncomingActions = incomingConnectActions.filter(a => !myPassIds.has(String(a.actor)));
+        const incomingRequesterIds = pendingIncomingActions.map(a => a.actor);
+
+        // 4. Fetch all profiles in parallel
+        const [connectProfiles, savedProfiles, requestProfiles] = await Promise.all([
             CampusConnectProfile.find({ user: { $in: myConnectIds } })
-                .populate("user", "username fullName avatar collegeName verificationStatus branch semester")
+                .populate("user", "username fullName avatar collegeName verificationStatus branch semester skills interests photos bio gender")
                 .lean(),
             CampusConnectProfile.find({ user: { $in: savedIds } })
-                .populate("user", "username fullName avatar collegeName verificationStatus branch semester")
+                .populate("user", "username fullName avatar collegeName verificationStatus branch semester skills interests photos bio gender")
+                .lean(),
+            CampusConnectProfile.find({ user: { $in: incomingRequesterIds } })
+                .populate("user", "username fullName avatar collegeName verificationStatus branch semester skills interests photos bio gender")
                 .lean()
         ]);
 
@@ -612,6 +688,7 @@ async function getConnections(req, res) {
 
         return res.status(200).json({
             connections: formattedConnections,
+            requests: requestProfiles.filter(p => p.user),
             saved: savedProfiles.filter(p => p.user)
         });
     } catch (err) {
@@ -854,6 +931,7 @@ async function updatePreferences(req, res) {
         if (mentorTags !== undefined) profile.mentorTags = mentorTags;
 
         await profile.save();
+        await invalidateUserCache(userId);
         return res.status(200).json({ message: "Preferences saved", preferences: profile });
     } catch (err) {
         console.error("updatePreferences error:", err);

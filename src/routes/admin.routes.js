@@ -17,7 +17,7 @@ const {
     getPendingVerifications, handleVerification,
     getAllDatingProfiles, handleDatingProfile,
     getAuditLogs,
-    getSettings, updateSetting,
+    getSettings, updateSetting, runManualCleanup,
     flushRedis, resetAllPasswords, broadcastAnnouncement,
     uploadSystemAsset,
     getEmailLogs, getEmailTemplates, updateEmailTemplate, sendTestEmail,
@@ -134,10 +134,12 @@ router.post("/colleges/bulk", upload.single("file"), requirePermission("userMana
 router.put("/colleges/:id", requirePermission("userManagement", "update"), updateCollege);
 router.delete("/colleges/:id", requirePermission("userManagement", "delete"), deleteCollege);
 
-// System Settings
+// System Settings & Retention Lifecycle
 router.get("/settings", requirePermission("userManagement", "view"), getSettings);
 router.put("/settings/:key", requirePermission("userManagement", "update"), updateSetting);
 router.post("/settings/upload-asset", upload.single("file"), requirePermission("userManagement", "update"), uploadSystemAsset);
+router.post("/settings/run-cleanup", requirePermission("userManagement", "update"), runManualCleanup);
+router.post("/retention/run-cleanup", requirePermission("userManagement", "update"), runManualCleanup);
 
 // Mail Management
 router.get("/mail/logs", requirePermission("analytics", "view"), getEmailLogs);
@@ -292,6 +294,21 @@ router.get("/careers/applications/all", requirePermission("userManagement", "vie
 router.get("/careers/applications", requirePermission("userManagement", "view"), careerCtrl.adminGetApplications);
 router.patch("/careers/applications/:id/status", requirePermission("userManagement", "update"), careerCtrl.adminUpdateApplicationStatus);
 router.delete("/careers/applications/:id", requirePermission("userManagement", "delete"), careerCtrl.adminDeleteApplication);
+
+// Premium & Monetization Module
+router.get("/premium/settings", getPremiumSettings);
+router.put("/premium/settings", updatePremiumSettings);
+router.post("/premium/plans", createPremiumPlan);
+router.put("/premium/plans/:id", updatePremiumPlan);
+router.delete("/premium/plans/:id", deletePremiumPlan);
+router.post("/premium/grant", grantPremiumManual);
+router.post("/premium/revoke", revokePremiumManual);
+router.post("/premium/subscribers/:id/cancel", cancelSubscriptionAdmin);
+router.put("/premium/subscribers/:id", updateSubscriberAdmin);
+router.get("/premium/subscribers", getPremiumSubscribers);
+router.get("/premium/subscribers/:id/audit", getSubscriberAudit);
+router.get("/premium/analytics", getPremiumAnalytics);
+router.get("/premium/users", getPremiumUsers);
 
 module.exports = router;
 

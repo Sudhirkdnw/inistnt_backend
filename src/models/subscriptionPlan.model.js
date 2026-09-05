@@ -19,8 +19,18 @@ const subscriptionPlanSchema = new mongoose.Schema({
     billingPeriod: {
         type: String,
         required: true,
-        enum: ["weekly", "monthly", "yearly", "custom"],
+        enum: ["daily", "weekly", "monthly", "quarterly", "yearly", "custom", "lifetime"],
         default: "monthly"
+    },
+    durationDays: {
+        type: Number,
+        default: 30,
+        min: 1
+    },
+    originalPrice: {
+        type: Number,
+        default: 0,
+        min: 0
     },
     discountPercentage: {
         type: Number,
@@ -32,6 +42,45 @@ const subscriptionPlanSchema = new mongoose.Schema({
         type: Number,
         default: 0,
         min: 0
+    },
+    // Quotas & Feature Entitlements
+    maxPhotosPerPost: {
+        type: Number,
+        default: 6,
+        min: 1
+    },
+    dailyPhotoPostLimit: {
+        type: Number,
+        default: 10, // 0 for unlimited
+        min: 0
+    },
+    campusConnectDailyLimit: {
+        type: Number,
+        default: 50, // 0 for unlimited
+        min: 0
+    },
+    directChatDailyLimit: {
+        type: Number,
+        default: 30, // 0 for unlimited
+        min: 0
+    },
+    features: {
+        type: [String],
+        default: ["Unlock all feed photos", "VIP Gold Badge", "Campus Connect Match Boost", "Ad-free experience"]
+    },
+    isPopular: {
+        type: Boolean,
+        default: false
+    },
+    badgeText: {
+        type: String,
+        trim: true,
+        default: ""
+    },
+    colorTheme: {
+        type: String,
+        enum: ["gold", "purple", "emerald", "blue", "rose"],
+        default: "gold"
     },
     stripeProductId: {
         type: String,

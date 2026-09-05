@@ -53,14 +53,36 @@ async function getUserProfile(req, res) {
             isRequestedUser: isRequested
         };
 
-        // Compute Mutual Connections (users both current user and target user follow)
+        // Run activity counts and relationships in parallel
+        const postModel = require("../models/post.model");
+        const followerIds = (user.followers || []).map(f => (f._id || f).toString());
+        const followingIds = (user.following || []).map(f => (f._id || f).toString());
+        const mutualFollowIds = followerIds.filter(id => followingIds.includes(id));
+
+        const [
+            currentUserFull,
+            confessionsCount,
+            postsCount,
+            commentsCount,
+            friends
+        ] = await Promise.all([
+            !isOwner ? userModel.findById(req.user._id).select("following").lean() : Promise.resolve(null),
+            Confession.countDocuments({ user: targetUserId, isSoftDeleted: { $ne: true } }),
+            postModel.countDocuments({ user: targetUserId }),
+            Comment.countDocuments({ user: targetUserId }),
+            mutualFollowIds.length > 0
+                ? userModel.find({ _id: { $in: mutualFollowIds } })
+                    .select("username fullName avatar isVerified")
+                    .limit(10)
+                    .lean()
+                : Promise.resolve([])
+        ]);
+
         let mutualConnections = [];
-        if (!isOwner) {
-            const currentUserFull = await userModel.findById(req.user._id).select("following").lean();
-            const myFollowing = (currentUserFull?.following || []).map(id => id.toString());
+        if (!isOwner && currentUserFull) {
+            const myFollowing = (currentUserFull.following || []).map(id => id.toString());
             const theirFollowing = (user.following || []).map(f => (f._id || f).toString());
             const mutualIds = myFollowing.filter(id => theirFollowing.includes(id));
-            
             if (mutualIds.length > 0) {
                 mutualConnections = await userModel.find({ _id: { $in: mutualIds } })
                     .select("username fullName avatar isVerified")
@@ -68,24 +90,6 @@ async function getUserProfile(req, res) {
                     .lean();
             }
         }
-
-        // Compute Friends (mutual followers of the target user)
-        const followerIds = (user.followers || []).map(f => (f._id || f).toString());
-        const followingIds = (user.following || []).map(f => (f._id || f).toString());
-        const mutualFollowIds = followerIds.filter(id => followingIds.includes(id));
-        let friends = [];
-        if (mutualFollowIds.length > 0) {
-            friends = await userModel.find({ _id: { $in: mutualFollowIds } })
-                .select("username fullName avatar isVerified")
-                .limit(10)
-                .lean();
-        }
-
-        // Query Activity Stats
-        const confessionsCount = await Confession.countDocuments({ user: targetUserId, isSoftDeleted: { $ne: true } });
-        const postModel = require("../models/post.model");
-        const postsCount = await postModel.countDocuments({ user: targetUserId });
-        const commentsCount = await Comment.countDocuments({ user: targetUserId });
 
         responseUser.stats = {
             confessionsCount,
@@ -1148,44 +1152,62 @@ async function searchUsers(req, res) {
 // GET /api/users/suggestions — Suggested users to follow
 async function getSuggestions(req, res) {
     try {
-        const currentUser = await userModel.findById(req.user._id);
+        const currentUser = await userModel.findById(req.user._id).select("following collegeName branch").lean();
+        const limit = Math.min(parseInt(req.query.limit) || 15, 100);
+        const searchQuery = (req.query.q || req.query.search || "").trim();
 
         const baseFilter = {
-            _id: { $nin: [...(currentUser.following || []), currentUser._id] },
+            _id: { $nin: [...(currentUser?.following || []), req.user._id] },
             isBanned: false,
             isSoftDeleted: false
         };
 
-        let sameCollegeSuggestions = [];
-        if (currentUser.collegeName) {
-            sameCollegeSuggestions = await userModel.find({ ...baseFilter, collegeName: currentUser.collegeName })
-                .select("username fullName avatar followers isPrivate collegeName")
-                .limit(10)
-                .lean();
+        if (searchQuery) {
+            const regex = new RegExp(searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+            baseFilter.$or = [
+                { username: regex },
+                { fullName: regex },
+                { collegeName: regex },
+                { bio: regex }
+            ];
         }
 
-        const sameCollegeIds = sameCollegeSuggestions.map(u => u._id);
-        
-        let genericSuggestions = [];
-        if (sameCollegeSuggestions.length < 15) {
-            genericSuggestions = await userModel.find({
-                ...baseFilter,
-                _id: { $nin: [...(currentUser.following || []), currentUser._id, ...sameCollegeIds] }
-            })
-            .select("username fullName avatar followers isPrivate collegeName")
-            .limit(15 - sameCollegeSuggestions.length)
-            .sort({ createdAt: -1 })
-            .lean();
-        }
+        const fields = "username fullName avatar bio collegeName branch year isVerified isAmbassador isPrivate followers following";
 
-        const suggestions = [...sameCollegeSuggestions, ...genericSuggestions];
+        // Fetch same college and generic suggestions in parallel for max performance
+        const [sameCollegeSuggestions, genericSuggestions] = await Promise.all([
+            currentUser?.collegeName && !searchQuery
+                ? userModel.find({ ...baseFilter, collegeName: currentUser.collegeName })
+                    .select(fields)
+                    .limit(Math.floor(limit * 0.6))
+                    .lean()
+                : Promise.resolve([]),
+            userModel.find(baseFilter)
+                .select(fields)
+                .limit(limit)
+                .sort({ lastActive: -1, createdAt: -1 })
+                .lean()
+        ]);
+
+        // Merge without duplicates
+        const seenIds = new Set();
+        const suggestions = [];
+        for (const u of [...sameCollegeSuggestions, ...genericSuggestions]) {
+            const idStr = u._id.toString();
+            if (!seenIds.has(idStr)) {
+                seenIds.add(idStr);
+                suggestions.push(u);
+            }
+            if (suggestions.length >= limit) break;
+        }
 
         // Add follower count for sorting, prioritize college match
         const sorted = suggestions
             .map(u => ({ 
                 ...u, 
                 followersCount: u.followers?.length || 0,
-                isCollegeMatch: u.collegeName && u.collegeName === currentUser.collegeName
+                followingCount: u.following?.length || 0,
+                isCollegeMatch: Boolean(u.collegeName && u.collegeName === currentUser?.collegeName)
             }))
             .sort((a, b) => {
                 if (a.isCollegeMatch && !b.isCollegeMatch) return -1;
@@ -1193,7 +1215,7 @@ async function getSuggestions(req, res) {
                 return b.followersCount - a.followersCount;
             });
 
-        res.status(200).json({ users: sorted });
+        res.status(200).json({ users: sorted, count: sorted.length });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

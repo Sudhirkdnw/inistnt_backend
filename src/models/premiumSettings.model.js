@@ -10,6 +10,19 @@ const premiumSettingsSchema = new mongoose.Schema({
         default: 3,
         min: 0
     },
+    freeDailyDirectChatsLimit: {
+        type: Number,
+        default: 2,
+        min: 0
+    },
+    freePhotosAllowed: {
+        type: Boolean,
+        default: true
+    },
+    premium_photo_blur_locked_enabled: {
+        type: Boolean,
+        default: true
+    },
     showMockGateway: {
         type: Boolean,
         default: true

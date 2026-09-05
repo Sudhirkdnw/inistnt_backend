@@ -16,11 +16,17 @@ const getCookieOptions = (maxAge = 7 * 24 * 60 * 60 * 1000) => ({
     sameSite: isProduction ? "none" : "lax"
 });
 
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
 async function sendOtpController(req, res) {
     try {
         const { email } = req.body;
         if (!email) {
             return res.status(400).json({ message: "Email is required" });
+        }
+
+        if (!EMAIL_REGEX.test(email.trim())) {
+            return res.status(400).json({ message: "Please provide a valid email format." });
         }
 
         // Check if it's an educational email
@@ -67,8 +73,25 @@ async function registerController(req, res) {
 
         const { username, password, email, fullName, collegeName, collegeId, collegeEmail, verificationMethod, university, universityId, department, branch, semester, referralCode } = req.body;
 
-        if (!username || !password) {
-            return res.status(400).json({ message: "Username and password are required" });
+        if (!fullName || !fullName.trim()) {
+            return res.status(400).json({ message: "Full Name is required" });
+        }
+
+        if (!username || !username.trim()) {
+            return res.status(400).json({ message: "Username is required" });
+        }
+
+        if (!password || !password.trim()) {
+            return res.status(400).json({ message: "Password is required" });
+        }
+
+        if (!email || !email.trim()) {
+            return res.status(400).json({ message: "Personal email is required" });
+        }
+
+        const cleanPersonalEmail = email.trim().toLowerCase();
+        if (!EMAIL_REGEX.test(cleanPersonalEmail)) {
+            return res.status(400).json({ message: "Please enter a valid personal email address (e.g. name@gmail.com)" });
         }
 
         // Referral Code Validation (Optional)
@@ -174,6 +197,22 @@ async function registerController(req, res) {
 
         if (resolvedMethod === "ID_CARD" && !hasIdCard) {
             return res.status(400).json({ message: "College ID card image upload is required for ID_CARD verification flow" });
+        }
+
+        // Validate personal email format if provided
+        if (email && email.trim()) {
+            const cleanPersonalEmail = email.trim().toLowerCase();
+            if (!EMAIL_REGEX.test(cleanPersonalEmail)) {
+                return res.status(400).json({ message: "Please enter a valid personal email address (e.g. name@gmail.com)" });
+            }
+        }
+
+        // Validate college email format if provided
+        if (collegeEmail && collegeEmail.trim()) {
+            const cleanCollegeEmail = collegeEmail.trim().toLowerCase();
+            if (!EMAIL_REGEX.test(cleanCollegeEmail)) {
+                return res.status(400).json({ message: "Please enter a valid college email address" });
+            }
         }
 
         // Ensure at least one contact email exists for the user account
@@ -546,34 +585,22 @@ async function loginController(req, res) {
             isSuspicious
         }, user._id);
 
+        const userObj = user.toObject ? user.toObject() : { ...user };
+        delete userObj.password;
+        delete userObj.resetPasswordToken;
+        delete userObj.resetPasswordExpire;
+        delete userObj.loginHistory;
+
+        userObj.followersCount = (user.followers || []).length;
+        userObj.followingCount = (user.following || []).length;
+
         res.status(200).json({
             message: "Login successful",
             token,
-            user: {
-                _id: user._id,
-                username: user.username,
-                email: user.email,
-                fullName: user.fullName,
-                avatar: user.avatar,
-                role: user.role,
-                notificationSoundEnabled: user.notificationSoundEnabled,
-                // Profile fields needed for CC onboarding & profile display
-                bio: user.bio,
-                isPrivate: user.isPrivate,
-                collegeName: user.collegeName,
-                branch: user.branch,
-                semester: user.semester,
-                gradYear: user.gradYear,
-                photos: user.photos,
-                skills: user.skills,
-                interests: user.interests,
-                goals: user.goals,
-                isPremium: user.isPremium,
-                isVerified: user.isVerified,
-                isEmailVerified: user.isEmailVerified
-            }
+            user: userObj
         });
     } catch (error) {
+        console.error("Login error:", error);
         res.status(500).json({ message: error.message });
     }
 }
@@ -602,7 +629,14 @@ async function getMeController(req, res) {
         const user = await userModel.findById(req.user._id)
             .select("-password")
             .populate("roleRef", "name permissions")
-            .populate("ambassadorRef", "referralCode status college");
+            .populate("ambassadorRef", "referralCode status college")
+            .lean();
+
+        if (user) {
+            user.followersCount = (user.followers || []).length;
+            user.followingCount = (user.following || []).length;
+        }
+
         res.status(200).json({ user });
     } catch (error) {
         res.status(500).json({ message: error.message });

@@ -101,15 +101,32 @@ async function sendPushNotification(pushTokens, title, body, data = {}, sound = 
     return 0;
   }
 
-  const messages = validTokens.map((token) => ({
-    to: token,
-    sound: sound || undefined,
-    title,
-    body,
-    data,
-    channelId: 'default',
-    priority: 'high',
-  }));
+  const messages = validTokens.map((token) => {
+    const rawImageUrl = data?.imageUrl || data?.image || data?.bannerUrl;
+    const msg = {
+      to: token,
+      sound: sound || 'default',
+      title,
+      body,
+      data: {
+        ...data,
+        image: rawImageUrl || undefined,
+        imageUrl: rawImageUrl || undefined,
+      },
+      channelId: 'default',
+      priority: 'high',
+      _displayInForeground: true,
+    };
+    if (rawImageUrl) {
+      msg.attachments = [{ url: rawImageUrl }];
+      msg.richMedia = { image: rawImageUrl };
+    }
+    return msg;
+  });
+
+  if (messages.length > 0) {
+    console.log(`[Expo Push Notification Dispatching] Sending ${messages.length} messages. Sample payload:`, JSON.stringify(messages[0], null, 2));
+  }
 
   let successCount = 0;
   const deadTokens = [];

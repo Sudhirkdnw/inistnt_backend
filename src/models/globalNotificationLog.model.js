@@ -19,6 +19,14 @@ const globalNotificationLogSchema = new mongoose.Schema({
     totalSent: {
         type: Number,
         default: 0
+    },
+    imageUrl: {
+        type: String,
+        default: null
+    },
+    linkUrl: {
+        type: String,
+        default: null
     }
 }, { timestamps: true });
 

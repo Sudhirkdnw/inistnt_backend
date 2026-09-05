@@ -367,27 +367,32 @@ async function sendMessage(req, res) {
         }
 
         // Verify participation
-        const conversation = await Conversation.findOne({ _id: id, participants: currentUserId });
+        const conversation = await Conversation.findOne({ _id: id, participants: currentUserId }).lean();
         if (!conversation) {
             return res.status(403).json({ message: "Not a participant in this conversation" });
         }
 
         const { isUserActiveInConversation } = require("../utils/presence");
 
-        // Check which recipients are currently active in this conversation
+        // Check which recipients are currently active in this conversation in parallel
         const initialReadBy = [currentUserId];
         const activeRecipientIds = [];
+        const otherParticipants = (conversation.participants || []).filter(p => p.toString() !== currentUserId.toString());
 
-        for (const p of conversation.participants) {
-            const pid = p.toString();
-            if (pid !== currentUserId.toString()) {
-                const isActive = await isUserActiveInConversation(pid, id);
-                if (isActive) {
-                    initialReadBy.push(p);
-                    activeRecipientIds.push(pid);
-                }
+        const presenceResults = await Promise.all(
+            otherParticipants.map(async (p) => {
+                const pid = p.toString();
+                const isActive = await isUserActiveInConversation(pid, id).catch(() => false);
+                return { pid, p, isActive };
+            })
+        );
+
+        presenceResults.forEach(({ pid, p, isActive }) => {
+            if (isActive) {
+                initialReadBy.push(p);
+                activeRecipientIds.push(pid);
             }
-        }
+        });
 
         const message = await Message.create({
             conversation: id,
@@ -399,25 +404,34 @@ async function sendMessage(req, res) {
             readBy: initialReadBy
         });
 
-        await message.populate("sender", "username avatar");
-        if (message.replyTo) {
-            await message.populate({
-                path: "replyTo",
-                select: "text mediaUrl mediaType sender",
-                populate: { path: "sender", select: "username avatar fullName" }
-            });
-        }
+        // Run population and conversation update in parallel
+        const populatePromise = (async () => {
+            await message.populate("sender", "username avatar");
+            if (message.replyTo) {
+                await message.populate({
+                    path: "replyTo",
+                    select: "text mediaUrl mediaType sender",
+                    populate: { path: "sender", select: "username avatar fullName" }
+                });
+            }
+        })();
 
-        // Update conversation's lastMessage and timestamp
-        conversation.lastMessage = message._id;
-        await conversation.save();
+        const convUpdatePromise = Conversation.findByIdAndUpdate(id, { 
+            lastMessage: message._id,
+            updatedAt: new Date()
+        }).catch(err => console.error("Error updating conversation lastMessage:", err));
 
-        // Emit via Socket.io
+        await populatePromise;
+
+        // Emit via Socket.io immediately
         const io = req.app.get("io");
         if (io) {
             const msgPayload = { ...message.toObject(), _tempId: tempId || null };
 
-            // For sender
+            // Emit to entire conversation room
+            io.to(id.toString()).emit("receive-message", msgPayload);
+
+            // Also emit directly to sender
             io.to(currentUserId.toString()).emit("receive-message", msgPayload);
 
             // If recipient is already actively in the chat, emit read receipt back to sender immediately
@@ -430,71 +444,76 @@ async function sendMessage(req, res) {
                 });
             }
 
-            conversation.participants.forEach(participantId => {
+            // Emit to each participant
+            otherParticipants.forEach(participantId => {
                 const pid = participantId.toString();
-                if (pid !== currentUserId.toString()) {
-                    const isRecipientActive = activeRecipientIds.includes(pid);
+                const isRecipientActive = activeRecipientIds.includes(pid);
 
-                    // For recipient, check anonymity
-                    let recipientMsgPayload = JSON.parse(JSON.stringify(msgPayload));
-                    if (conversation.isAnonymousChat) {
-                        const sId = currentUserId.toString();
-
-                        let identity = "Anonymous User";
-                        if (conversation.anonymousIdentities) {
-                            identity = typeof conversation.anonymousIdentities.get === 'function'
-                                ? conversation.anonymousIdentities.get(sId)
-                                : conversation.anonymousIdentities[sId];
-                            if (!identity) identity = "Anonymous User";
-                        }
-
-                        recipientMsgPayload.sender._id = `anon_${sId.substring(0, 8)}`; // Mask ID
-                        recipientMsgPayload.sender.username = identity;
-                        recipientMsgPayload.sender.avatar = "";
-
-                        if (recipientMsgPayload.readBy) {
-                            recipientMsgPayload.readBy = recipientMsgPayload.readBy.map(id => {
-                                const strId = id.toString();
-                                return strId === pid ? strId : `anon_${strId.substring(0, 8)}`;
-                            });
-                        }
+                // For recipient, check anonymity
+                let recipientMsgPayload = JSON.parse(JSON.stringify(msgPayload));
+                if (conversation.isAnonymousChat) {
+                    const sId = currentUserId.toString();
+                    let identity = "Anonymous User";
+                    if (conversation.anonymousIdentities) {
+                        identity = typeof conversation.anonymousIdentities.get === 'function'
+                            ? conversation.anonymousIdentities.get(sId)
+                            : conversation.anonymousIdentities[sId];
+                        if (!identity) identity = "Anonymous User";
                     }
 
-                    // Always deliver realtime message to recipient's active socket
-                    io.to(pid).emit("receive-message", recipientMsgPayload);
+                    recipientMsgPayload.sender._id = `anon_${sId.substring(0, 8)}`; // Mask ID
+                    recipientMsgPayload.sender.username = identity;
+                    recipientMsgPayload.sender.avatar = "";
 
-                    // ONLY send notifications if recipient is NOT actively viewing this chat
-                    if (!isRecipientActive) {
-                        // Lightweight in-app banner trigger
-                        const notifPayload = {
-                            conversationId: id,
-                            sender: recipientMsgPayload.sender,
-                            text: message.text,
-                            messageId: message._id.toString()
-                        };
-                        io.to(pid).emit("new-message-notification", notifPayload);
-
-                        // Send Mobile Push Notification
-                        const { sendPushNotificationToUser } = require("../utils/pushNotifications");
-                        const senderName = recipientMsgPayload.sender.fullName || recipientMsgPayload.sender.username || "Someone";
-                        const pushTitle = `💬 New message from ${senderName} 📨`;
-                        const pushBody = message.text
-                            ? message.text
-                            : message.mediaType
-                                ? `Sent a ${message.mediaType}`
-                                : "Sent an attachment";
-                        sendPushNotificationToUser(pid, pushTitle, pushBody, {
-                            type: "message",
-                            conversationId: id.toString()
+                    if (recipientMsgPayload.readBy) {
+                        recipientMsgPayload.readBy = recipientMsgPayload.readBy.map(id => {
+                            const strId = id.toString();
+                            return strId === pid ? strId : `anon_${strId.substring(0, 8)}`;
                         });
                     }
+                }
+
+                // Deliver realtime message to recipient's active socket
+                io.to(pid).emit("receive-message", recipientMsgPayload);
+
+                // ONLY send push notifications asynchronously in background if recipient is NOT active
+                if (!isRecipientActive) {
+                    const notifPayload = {
+                        conversationId: id,
+                        sender: recipientMsgPayload.sender,
+                        text: message.text,
+                        messageId: message._id.toString()
+                    };
+                    io.to(pid).emit("new-message-notification", notifPayload);
+
+                    // Fire push notification in background
+                    setImmediate(() => {
+                        try {
+                            const { sendPushNotificationToUser } = require("../utils/pushNotifications");
+                            const senderName = recipientMsgPayload.sender.fullName || recipientMsgPayload.sender.username || "Someone";
+                            const pushTitle = `💬 New message from ${senderName} 📨`;
+                            const pushBody = message.text
+                                ? message.text
+                                : message.mediaType
+                                    ? `Sent a ${message.mediaType}`
+                                    : "Sent an attachment";
+                            sendPushNotificationToUser(pid, pushTitle, pushBody, {
+                                type: "message",
+                                conversationId: id.toString()
+                            });
+                        } catch (e) {
+                            console.error("Push notification background error:", e);
+                        }
+                    });
                 }
             });
         }
 
-        res.status(201).json(message);
+        // Return HTTP response immediately (< 10ms)
+        return res.status(201).json(message);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("sendMessage error:", error);
+        return res.status(500).json({ message: error.message });
     }
 }
 

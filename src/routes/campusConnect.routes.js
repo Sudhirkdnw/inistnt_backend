@@ -31,14 +31,14 @@ router.use(authMiddleware);
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 router.post("/profile", setupProfile);
-router.get("/profile/me", cacheMiddleware(30), getMyProfile);
+router.get("/profile/me", getMyProfile);
 
 // ── Preferences ───────────────────────────────────────────────────────────────
 router.get("/preferences", getPreferences);
 router.put("/preferences", updatePreferences);
 
 // ── Discovery ─────────────────────────────────────────────────────────────────
-router.get("/discovery", cacheMiddleware(30), getDiscovery);
+router.get("/discovery", getDiscovery);
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 router.post("/connect/:targetUserId", sendConnect);
@@ -49,7 +49,7 @@ router.post("/pass/:targetUserId", passProfile);
 router.delete("/disconnect/:targetUserId", disconnect);
 
 // ── Connections & Saved ───────────────────────────────────────────────────────
-router.get("/connections", cacheMiddleware(30), getConnections);
+router.get("/connections", getConnections);
 
 // ── Team Finder ───────────────────────────────────────────────────────────────
 router.get("/team-finder", cacheMiddleware(60), getTeamFinder);

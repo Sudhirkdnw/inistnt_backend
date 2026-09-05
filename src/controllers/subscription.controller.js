@@ -108,11 +108,14 @@ async function purchaseSubscription(req, res) {
         const startDate = new Date();
         const endDate = new Date();
         
-        let daysToAdd = plan.freeTrialDays || 0;
-        if (plan.billingPeriod === "weekly") daysToAdd += 7;
-        else if (plan.billingPeriod === "monthly") daysToAdd += 30;
-        else if (plan.billingPeriod === "yearly") daysToAdd += 365;
-        else daysToAdd += 30; // default backup
+        let daysToAdd = (plan.freeTrialDays || 0) + (plan.durationDays || (
+            plan.billingPeriod === "daily" ? 1 :
+            plan.billingPeriod === "weekly" ? 7 :
+            plan.billingPeriod === "monthly" ? 30 :
+            plan.billingPeriod === "quarterly" ? 90 :
+            plan.billingPeriod === "yearly" ? 365 :
+            plan.billingPeriod === "lifetime" ? 3650 : 30
+        ));
 
         endDate.setDate(endDate.getDate() + daysToAdd);
 
@@ -227,6 +230,7 @@ async function getSubscriptionStatus(req, res) {
         const enableRazorpayGateway = settings ? settings.enableRazorpayGateway : false;
         const enableCashfreeGateway = settings ? settings.enableCashfreeGateway : false;
         const activeGateway = settings ? settings.activeGateway : "mock";
+        const freePhotosAllowed = settings ? Boolean(settings.freePhotosAllowed) : false;
 
         if (!userId) {
             return res.status(200).json({
@@ -236,6 +240,7 @@ async function getSubscriptionStatus(req, res) {
                 enableRazorpayGateway: !!enableRazorpayGateway,
                 enableCashfreeGateway: !!enableCashfreeGateway,
                 activeGateway,
+                freePhotosAllowed,
                 isPremium: false,
                 premiumExpireAt: null,
                 subscription: null
@@ -261,6 +266,7 @@ async function getSubscriptionStatus(req, res) {
             enableRazorpayGateway: !!enableRazorpayGateway,
             enableCashfreeGateway: !!enableCashfreeGateway,
             activeGateway,
+            freePhotosAllowed,
             isPremium: !!isPremium,
             premiumExpireAt: user.premiumExpireAt,
             subscription
@@ -621,11 +627,14 @@ async function renderCashfreeVerify(req, res) {
             const startDate = new Date();
             const endDate = new Date();
             
-            let daysToAdd = plan.freeTrialDays || 0;
-            if (plan.billingPeriod === "weekly") daysToAdd += 7;
-            else if (plan.billingPeriod === "monthly") daysToAdd += 30;
-            else if (plan.billingPeriod === "yearly") daysToAdd += 365;
-            else daysToAdd += 30;
+            let daysToAdd = (plan.freeTrialDays || 0) + (plan.durationDays || (
+                plan.billingPeriod === "daily" ? 1 :
+                plan.billingPeriod === "weekly" ? 7 :
+                plan.billingPeriod === "monthly" ? 30 :
+                plan.billingPeriod === "quarterly" ? 90 :
+                plan.billingPeriod === "yearly" ? 365 :
+                plan.billingPeriod === "lifetime" ? 3650 : 30
+            ));
 
             endDate.setDate(endDate.getDate() + daysToAdd);
 

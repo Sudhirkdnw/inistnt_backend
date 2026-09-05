@@ -17,9 +17,21 @@ const notificationSchema = new mongoose.Schema({
             "like", "comment", "follow", "follow_request", "mention", "dating_match", "dating_like",
             "campus_connect_mutual", "campus_connect_request", "campus_connect_hi", "campus_connect_save", "mentor_request",
             "team_application", "team_application_accepted", "team_application_rejected",
-            "verification_approved", "verification_rejected"
+            "verification_approved", "verification_rejected", "admin_broadcast"
         ],
         required: true
+    },
+    title: {
+        type: String,
+        default: null
+    },
+    imageUrl: {
+        type: String,
+        default: null
+    },
+    linkUrl: {
+        type: String,
+        default: null
     },
     team: {
         type: mongoose.Schema.Types.ObjectId,

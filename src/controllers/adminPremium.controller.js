@@ -12,6 +12,8 @@ async function getSettings(req, res) {
             settings = await premiumSettingsModel.create({
                 isPremiumRequired: true,
                 freeCampusConnectLimit: 3,
+                freeDailyDirectChatsLimit: 2,
+                freePhotosAllowed: false,
                 activeGateway: "mock",
                 showMockGateway: true,
                 enableStripeGateway: false,
@@ -46,6 +48,9 @@ async function updateSettings(req, res) {
         const { 
             isPremiumRequired, 
             freeCampusConnectLimit,
+            freeDailyDirectChatsLimit,
+            freePhotosAllowed,
+            premium_photo_blur_locked_enabled,
             showMockGateway,
             activeGateway,
             enableStripeGateway,
@@ -68,6 +73,21 @@ async function updateSettings(req, res) {
 
         if (isPremiumRequired !== undefined) settings.isPremiumRequired = isPremiumRequired;
         if (freeCampusConnectLimit !== undefined) settings.freeCampusConnectLimit = Math.max(0, parseInt(freeCampusConnectLimit) || 0);
+        if (freeDailyDirectChatsLimit !== undefined) settings.freeDailyDirectChatsLimit = Math.max(0, parseInt(freeDailyDirectChatsLimit) || 0);
+        if (freePhotosAllowed !== undefined) settings.freePhotosAllowed = Boolean(freePhotosAllowed);
+        if (premium_photo_blur_locked_enabled !== undefined) {
+            settings.premium_photo_blur_locked_enabled = Boolean(premium_photo_blur_locked_enabled);
+            try {
+                const Setting = require("../models/settings.model");
+                await Setting.findOneAndUpdate(
+                    { key: "premium_photo_blur_locked_enabled" },
+                    { value: Boolean(premium_photo_blur_locked_enabled), category: "Features" },
+                    { upsert: true }
+                );
+            } catch (err) {
+                console.error("Failed to sync premium_photo_blur_locked_enabled to Setting collection:", err);
+            }
+        }
         if (showMockGateway !== undefined) settings.showMockGateway = showMockGateway;
         if (activeGateway !== undefined) settings.activeGateway = activeGateway;
         if (enableStripeGateway !== undefined) settings.enableStripeGateway = enableStripeGateway;
@@ -113,19 +133,63 @@ async function updateSettings(req, res) {
 // POST /api/admin/premium/plans — Create new subscription plan
 async function createPlan(req, res) {
     try {
-        const { name, description, price, billingPeriod, discountPercentage, freeTrialDays } = req.body;
+        const { 
+            name, 
+            description, 
+            price, 
+            originalPrice,
+            billingPeriod, 
+            durationDays,
+            discountPercentage, 
+            freeTrialDays,
+            maxPhotosPerPost,
+            dailyPhotoPostLimit,
+            campusConnectDailyLimit,
+            directChatDailyLimit,
+            features,
+            isPopular,
+            badgeText,
+            colorTheme
+        } = req.body;
 
         if (!name || price === undefined || !billingPeriod) {
             return res.status(400).json({ message: "Name, price and billingPeriod are required" });
         }
 
+        // Calculate default duration in days if not explicitly provided
+        let calcDuration = durationDays ? Number(durationDays) : 30;
+        if (!durationDays) {
+            if (billingPeriod === 'daily') calcDuration = 1;
+            else if (billingPeriod === 'weekly') calcDuration = 7;
+            else if (billingPeriod === 'monthly') calcDuration = 30;
+            else if (billingPeriod === 'quarterly') calcDuration = 90;
+            else if (billingPeriod === 'yearly') calcDuration = 365;
+            else if (billingPeriod === 'lifetime') calcDuration = 3650;
+        }
+
         const plan = await subscriptionPlanModel.create({
-            name,
-            description,
-            price,
+            name: name.trim(),
+            description: (description || "").trim(),
+            price: Math.max(0, Number(price)),
+            originalPrice: originalPrice ? Math.max(0, Number(originalPrice)) : 0,
             billingPeriod,
-            discountPercentage: discountPercentage || 0,
-            freeTrialDays: freeTrialDays || 0
+            durationDays: calcDuration,
+            discountPercentage: discountPercentage ? Math.min(100, Math.max(0, Number(discountPercentage))) : 0,
+            freeTrialDays: freeTrialDays ? Math.max(0, Number(freeTrialDays)) : 0,
+            maxPhotosPerPost: maxPhotosPerPost !== undefined ? Math.max(1, Number(maxPhotosPerPost)) : 6,
+            dailyPhotoPostLimit: dailyPhotoPostLimit !== undefined ? Math.max(0, Number(dailyPhotoPostLimit)) : 10,
+            campusConnectDailyLimit: campusConnectDailyLimit !== undefined ? Math.max(0, Number(campusConnectDailyLimit)) : 50,
+            directChatDailyLimit: directChatDailyLimit !== undefined ? Math.max(0, Number(directChatDailyLimit)) : 30,
+            features: Array.isArray(features) && features.length > 0 ? features : [
+                "Unlock all feed photos", 
+                "VIP Gold Badge", 
+                `${campusConnectDailyLimit || 50} Campus Connect matches/day`, 
+                "Ad-free experience"
+            ],
+            isPopular: Boolean(isPopular),
+            badgeText: (badgeText || "").trim(),
+            colorTheme: colorTheme || "gold",
+            isActive: true
         });
 
         res.status(201).json({ message: "Subscription plan created successfully", plan });
@@ -137,7 +201,25 @@ async function createPlan(req, res) {
 // PUT /api/admin/premium/plans/:id — Update subscription plan
 async function updatePlan(req, res) {
     try {
-        const { name, description, price, billingPeriod, discountPercentage, freeTrialDays, isActive } = req.body;
+        const { 
+            name, 
+            description, 
+            price, 
+            originalPrice,
+            billingPeriod, 
+            durationDays,
+            discountPercentage, 
+            freeTrialDays, 
+            maxPhotosPerPost,
+            dailyPhotoPostLimit,
+            campusConnectDailyLimit,
+            directChatDailyLimit,
+            features,
+            isPopular,
+            badgeText,
+            colorTheme,
+            isActive 
+        } = req.body;
         const planId = req.params.id;
 
         const plan = await subscriptionPlanModel.findById(planId);
@@ -145,13 +227,23 @@ async function updatePlan(req, res) {
             return res.status(404).json({ message: "Subscription plan not found" });
         }
 
-        if (name !== undefined) plan.name = name;
-        if (description !== undefined) plan.description = description;
-        if (price !== undefined) plan.price = price;
+        if (name !== undefined) plan.name = name.trim();
+        if (description !== undefined) plan.description = description.trim();
+        if (price !== undefined) plan.price = Math.max(0, Number(price));
+        if (originalPrice !== undefined) plan.originalPrice = Math.max(0, Number(originalPrice));
         if (billingPeriod !== undefined) plan.billingPeriod = billingPeriod;
-        if (discountPercentage !== undefined) plan.discountPercentage = discountPercentage;
-        if (freeTrialDays !== undefined) plan.freeTrialDays = freeTrialDays;
-        if (isActive !== undefined) plan.isActive = isActive;
+        if (durationDays !== undefined) plan.durationDays = Math.max(1, Number(durationDays));
+        if (discountPercentage !== undefined) plan.discountPercentage = Math.min(100, Math.max(0, Number(discountPercentage)));
+        if (freeTrialDays !== undefined) plan.freeTrialDays = Math.max(0, Number(freeTrialDays));
+        if (maxPhotosPerPost !== undefined) plan.maxPhotosPerPost = Math.max(1, Number(maxPhotosPerPost));
+        if (dailyPhotoPostLimit !== undefined) plan.dailyPhotoPostLimit = Math.max(0, Number(dailyPhotoPostLimit));
+        if (campusConnectDailyLimit !== undefined) plan.campusConnectDailyLimit = Math.max(0, Number(campusConnectDailyLimit));
+        if (directChatDailyLimit !== undefined) plan.directChatDailyLimit = Math.max(0, Number(directChatDailyLimit));
+        if (features !== undefined && Array.isArray(features)) plan.features = features;
+        if (isPopular !== undefined) plan.isPopular = Boolean(isPopular);
+        if (badgeText !== undefined) plan.badgeText = badgeText.trim();
+        if (colorTheme !== undefined) plan.colorTheme = colorTheme;
+        if (isActive !== undefined) plan.isActive = Boolean(isActive);
 
         await plan.save();
 

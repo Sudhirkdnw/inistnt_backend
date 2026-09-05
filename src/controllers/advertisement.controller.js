@@ -1,6 +1,6 @@
 const sharp = require("sharp");
 const Advertisement = require("../models/advertisement.model");
-const { uploadImage } = require("../utils/cloudinary");
+const { uploadImage, deleteImage } = require("../utils/cloudinary");
 
 /**
  * Validates if the image buffer has a 4:3 aspect ratio (allowing a tiny ±0.035 tolerance for pixel rounding).
@@ -360,7 +360,7 @@ exports.updateAdvertisement = async (req, res) => {
             return res.status(400).json({ success: false, message: "End date must be after start date." });
         }
 
-        // If a new image is uploaded, validate 4:3 aspect ratio
+        // If a new image is uploaded, validate 4:3 aspect ratio and remove old image from Cloudinary
         if (req.file) {
             const ratioCheck = await validateImageRatio(req.file.buffer);
             if (!ratioCheck.isValid) {
@@ -370,12 +370,22 @@ exports.updateAdvertisement = async (req, res) => {
                 });
             }
 
+            const oldImage = ad.imagePublicId || ad.imageUrl;
+
             const imageUrl = await uploadImage(req.file.buffer, {
                 folder: "hykee/ads",
                 transformation: [{ width: 1200, crop: "limit" }]
             }, req.file.mimetype);
 
             ad.imageUrl = imageUrl;
+            ad.imagePublicId = "";
+
+            // Delete previous image from Cloudinary
+            if (oldImage && oldImage !== imageUrl) {
+                deleteImage(oldImage).catch(err => {
+                    console.error("Failed to delete previous ad image from Cloudinary:", err.message);
+                });
+            }
         }
 
         if (status) {
@@ -448,27 +458,36 @@ exports.toggleAdStatus = async (req, res) => {
 
 /**
  * DELETE /api/admin/advertisements/:id
- * Soft delete an advertisement.
+ * Delete an advertisement permanently from database & delete image from Cloudinary.
  */
 exports.deleteAdvertisement = async (req, res) => {
     try {
         const { id } = req.params;
-        const ad = await Advertisement.findByIdAndUpdate(
-            id,
-            { isDeleted: true, status: "PAUSED" },
-            { returnDocument: "after" }
-        );
+        const ad = await Advertisement.findById(id);
 
         if (!ad) {
             return res.status(404).json({ success: false, message: "Advertisement not found." });
         }
 
-        // Broadcast real-time deletion to mobile clients
-        broadcastAdChange(req, "DELETED", { _id: id, status: "PAUSED" });
+        // 1. Delete image from Cloudinary if present
+        const imageToDelete = ad.imagePublicId || ad.imageUrl;
+        if (imageToDelete) {
+            try {
+                await deleteImage(imageToDelete);
+            } catch (cloudErr) {
+                console.error("Failed to delete ad image from Cloudinary:", cloudErr.message);
+            }
+        }
+
+        // 2. Permanently delete from MongoDB
+        await Advertisement.findByIdAndDelete(id);
+
+        // 3. Broadcast real-time deletion to mobile clients
+        broadcastAdChange(req, "DELETED", { _id: id, status: "DELETED" });
 
         return res.status(200).json({
             success: true,
-            message: "Advertisement deleted successfully."
+            message: "Advertisement and image deleted successfully."
         });
     } catch (error) {
         console.error("Error in deleteAdvertisement:", error);

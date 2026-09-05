@@ -740,14 +740,27 @@ const getReports = async (req, res) => {
         const skip = (page - 1) * limit;
         const status = req.query.status || "pending";
 
-        const filter = status === 'all' ? {} : { status };
+        const filter = status === 'all' ? {} : { 
+            status: (status === 'ignored' || status === 'dismissed') ? { $in: ['ignored', 'dismissed'] } : status 
+        };
 
-        const reports = await reportModel.find(filter)
-            .populate("reporter", "username avatar")
-            .populate("targetId")
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit);
+        let reports = [];
+        try {
+            reports = await reportModel.find(filter)
+                .populate("reporter", "username avatar fullName email")
+                .populate("targetId")
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean();
+        } catch (popErr) {
+            reports = await reportModel.find(filter)
+                .populate("reporter", "username avatar fullName email")
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean();
+        }
 
         const total = await reportModel.countDocuments(filter);
 
@@ -763,7 +776,9 @@ const getReports = async (req, res) => {
 // PUT /api/admin/reports/:id
 const updateReport = async (req, res) => {
     try {
-        const { status, adminNote } = req.body;
+        let { status, adminNote } = req.body;
+        if (status === 'ignored') status = 'dismissed';
+
         const report = await reportModel.findByIdAndUpdate(
             req.params.id,
             {
@@ -1180,11 +1195,26 @@ const updateSetting = async (req, res) => {
         // but typically mailer utility does its own fetch/decrypt)
         updateSettingInCache(key, finalValue);
 
-        // Notify via Socket.IO for real-time effects (maintenance mode, banners, feature flags)
+        // Clear Redis cache so fresh data is returned immediately on API calls
+        try {
+            const cache = require("../service/cache.service");
+            if (cache && cache.clearByPrefix) {
+                await cache.clearByPrefix("explore");
+                await cache.clearByPrefix("confession");
+                await cache.clearByPrefix("feed");
+                await cache.clearByPrefix("settings");
+                await cache.clearByPrefix("hot");
+            }
+        } catch (cacheErr) {
+            console.error("Cache purge on setting update error:", cacheErr);
+        }
+
+        // Notify via Socket.IO for real-time instant effects across all mobile & web clients
         const io = req.app.get("io") || global.ioInstance;
         if (io) {
-            io.emit("settings-updated", { key, value });
-            io.emit("feature-flags-updated", { key, value });
+            io.emit("settings-updated", { key, value: finalValue });
+            io.emit("feature-flags-updated", { key, value: finalValue });
+            io.emit("explore-config-updated", { key, value: finalValue });
         }
 
         await logAudit(req.user._id, "UPDATE_SETTING", {
@@ -1264,24 +1294,45 @@ const broadcastAnnouncement = async (req, res) => {
     }
 };
 
+// POST /api/admin/retention/run-cleanup — Manually trigger database retention cleanup
+const runManualCleanup = async (req, res) => {
+    try {
+        const { runCleanupJob } = require("../jobs/cleanup.job");
+        const stats = await runCleanupJob();
+
+        await logAudit(req.user._id, "MANUAL_RETENTION_CLEANUP", {
+            details: `Admin @${req.user.username} executed manual retention cleanup sweep.`,
+            stats
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `Cleanup sweep finished. Purged ${stats.deletedMessages} messages and ${stats.deletedConfessions} confessions.`,
+            stats
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // POST /api/admin/notifications/broadcast
 const broadcastPushNotification = async (req, res) => {
     try {
-        const { title, message } = req.body;
+        const { title, message, imageUrl, linkUrl } = req.body;
         if (!title || !message) {
             return res.status(400).json({ message: "Title and message are required" });
         }
 
         const GlobalNotificationLog = require("../models/globalNotificationLog.model");
+        const notificationModel = require("../models/notification.model");
         const { sendPushNotification } = require("../utils/pushNotifications");
 
-        // Fetch all users with valid push tokens
-        const usersWithTokens = await userModel.find({
-            pushTokens: { $exists: true, $not: { $size: 0 } },
+        // Fetch all active users
+        const allActiveUsers = await userModel.find({
             isSoftDeleted: false
-        }).select('pushTokens');
+        }).select('_id pushTokens');
 
-        const allTokens = usersWithTokens.reduce((acc, user) => {
+        const allTokens = allActiveUsers.reduce((acc, user) => {
             if (user.pushTokens && Array.isArray(user.pushTokens)) {
                 acc.push(...user.pushTokens);
             }
@@ -1291,30 +1342,72 @@ const broadcastPushNotification = async (req, res) => {
         // Deduplicate tokens
         const uniqueTokens = [...new Set(allTokens)];
 
-        if (uniqueTokens.length === 0) {
-            return res.status(400).json({ message: "No active push tokens found across the user base." });
-        }
-
         // Return immediately to not block the request
         res.status(200).json({
-            message: `Push notification broadcast initiated for ${uniqueTokens.length} devices.`,
+            success: true,
+            message: `Push notification broadcast initiated for ${uniqueTokens.length} device tokens and ${allActiveUsers.length} user accounts.`,
             estimatedDevices: uniqueTokens.length
         });
 
         // Send in the background
         setImmediate(async () => {
             try {
-                const successCount = await sendPushNotification(uniqueTokens, title, message, { type: "admin_broadcast" });
+                let successCount = 0;
+                if (uniqueTokens.length > 0) {
+                    successCount = await sendPushNotification(uniqueTokens, title, message, {
+                        type: "admin_broadcast",
+                        title,
+                        message,
+                        imageUrl: imageUrl || undefined,
+                        linkUrl: linkUrl || undefined
+                    });
+                }
 
-                // Log history
+                // Log global history
                 await GlobalNotificationLog.create({
                     title,
                     message,
+                    imageUrl: imageUrl || null,
+                    linkUrl: linkUrl || null,
                     sentBy: req.user._id,
                     totalSent: successCount || uniqueTokens.length
                 });
 
-                await logAudit(req.user._id, "broadcast_push_notification", "system", null, { title, message, totalSent: successCount });
+                // Batch insert in-app notification records for active users (first 5000 users)
+                const inAppNotifications = allActiveUsers.slice(0, 5000).map(u => ({
+                    recipient: u._id,
+                    sender: req.user._id,
+                    type: "admin_broadcast",
+                    title,
+                    message,
+                    imageUrl: imageUrl || null,
+                    linkUrl: linkUrl || null,
+                    isRead: false
+                }));
+
+                if (inAppNotifications.length > 0) {
+                    await notificationModel.insertMany(inAppNotifications, { ordered: false }).catch(() => {});
+                }
+
+                // Emit realtime socket announcement if socket server is online
+                const io = req.app.get("io") || global.ioInstance;
+                if (io) {
+                    io.emit("new-broadcast-notification", {
+                        title,
+                        message,
+                        imageUrl: imageUrl || null,
+                        linkUrl: linkUrl || null,
+                        createdAt: new Date()
+                    });
+                }
+
+                await logAudit(req.user._id, "broadcast_push_notification", "system", null, {
+                    title,
+                    message,
+                    imageUrl,
+                    linkUrl,
+                    totalSent: successCount
+                });
             } catch (err) {
                 console.error("Background Push Notification Error:", err);
             }
@@ -2393,7 +2486,7 @@ module.exports = {
     getPendingVerifications, handleVerification,
     getAllDatingProfiles, handleDatingProfile,
     getAuditLogs,
-    getSettings, updateSetting,
+    getSettings, updateSetting, runManualCleanup,
     flushRedis, resetAllPasswords, broadcastAnnouncement, broadcastPushNotification, getGlobalNotificationHistory,
     uploadSystemAsset,
     getEmailLogs, getEmailTemplates, updateEmailTemplate, sendTestEmail,

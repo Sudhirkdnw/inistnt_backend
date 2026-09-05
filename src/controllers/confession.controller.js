@@ -62,19 +62,41 @@ const createConfession = async (req, res) => {
                 });
             }
 
-            // 2. Strict Backend Premium Check
+            // 2. Strict Backend Premium & Free Tier Settings Check
             const now = new Date();
             const isPremium = req.user.role === "admin" || (req.user.isPremium && req.user.premiumExpireAt && new Date(req.user.premiumExpireAt) > now);
 
-            if (!isPremium) {
+            let freePhotosAllowed = false;
+            try {
+                const { getPremiumSettingsCached } = require("../utils/premiumSettingsCache");
+                const pSettings = await getPremiumSettingsCached();
+                if (pSettings && pSettings.freePhotosAllowed) {
+                    freePhotosAllowed = true;
+                }
+            } catch (err) {
+                // Default fallback
+            }
+
+            if (!isPremium && !freePhotosAllowed) {
                 return res.status(403).json({
                     message: "Photo Confessions are available exclusively with an active Hykee Premium subscription.",
                     requiresPremium: true
                 });
             }
 
-            if (uploadedFiles.length > 6) {
-                return res.status(400).json({ message: "Maximum 6 photos allowed per confession" });
+            let maxAllowedPhotos = 6;
+            if (isPremium) {
+                try {
+                    const Subscription = require('../models/subscription.model');
+                    const sub = await Subscription.findOne({ user: req.user._id, status: 'active' }).populate('plan').lean();
+                    if (sub && sub.plan && sub.plan.maxPhotosPerPost) {
+                        maxAllowedPhotos = sub.plan.maxPhotosPerPost;
+                    }
+                } catch (e) {}
+            }
+
+            if (uploadedFiles.length > maxAllowedPhotos) {
+                return res.status(400).json({ message: `Maximum ${maxAllowedPhotos} photos allowed per confession` });
             }
 
             const { uploadConfessionMedia } = require("../utils/cloudinary");
@@ -201,7 +223,13 @@ const getFeed = async (req, res) => {
             filter.collegeName = req.query.college;
         }
 
-        if (category) filter.category = category;
+        if (category) {
+            if (category.toLowerCase() === 'team' || category.toLowerCase() === 'teams') {
+                filter.postType = 'TEAM_RECRUITMENT';
+            } else {
+                filter.category = category;
+            }
+        }
         if (cursor) filter._id = { $lt: cursor };
 
         const confessions = await confessionModel.find(filter)
@@ -229,44 +257,187 @@ const getFeed = async (req, res) => {
     }
 };
 
-// GET /api/confessions/explore — All confessions (trending/global)
+// GET /api/confessions/explore — All confessions, public user photos, and posts
 const getExplore = async (req, res) => {
     try {
-        const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+        const { getSetting } = require('../utils/settings');
+        const isExplorePhotosEnabled = getSetting('explore_photos_enabled', true);
+        if (!isExplorePhotosEnabled) {
+            return res.status(200).json({
+                confessions: [],
+                nextCursor: null,
+                hasMore: false,
+                disabled: true
+            });
+        }
+
+        const visibilityAccess = getSetting('explore_photos_visibility', 'all');
+        const isUserPremium = req.user?.role === "admin" || (req.user?.isPremium && req.user?.premiumExpireAt && new Date(req.user.premiumExpireAt) > new Date());
+        if (visibilityAccess === 'vip_only' && !isUserPremium) {
+            return res.status(200).json({
+                confessions: [],
+                nextCursor: null,
+                hasMore: false,
+                vipRequired: true
+            });
+        }
+
+        const showProfilePhotos = getSetting('explore_photos_show_profile_photos', true);
+        const showConfessionPhotos = getSetting('explore_photos_show_confession_photos', true);
+
+        const limit = Math.min(parseInt(req.query.limit) || 24, 60);
         const cursor = req.query.cursor;
         const category = req.query.category || 'all';
 
-        // Enterprise Cache Strategy: Cache global explore feed for 60 seconds
-        const cacheKey = `explore:${category}:${cursor || 'start'}:${limit}`;
+        const filter = { isHidden: false };
+        if (category !== 'all' && category !== 'profile') {
+            filter.category = category;
+        }
+        if (cursor && !cursor.startsWith('user_')) {
+            filter._id = { $lt: cursor };
+        }
+
+        // Run all queries in parallel for instant execution
+        const [confessions, userPhotoItems, postItems] = await Promise.all([
+            // 1. Fetch Confessions
+            (async () => {
+                if (category === 'profile' || !showConfessionPhotos) return [];
+                return await confessionModel.find(filter)
+                    .select('confessionText category user isAnonymous likes commentCount poll createdAt postType media isPremiumPost mediaStatus mediaExpireAt')
+                    .populate("user", "username fullName avatar isPrivate collegeName branch year isCollegeVerified isEmailVerified")
+                    .sort({ _id: -1 })
+                    .limit(limit)
+                    .lean();
+            })(),
+            // 2. Fetch Public User Profile Photos (from users with public profile: isPrivate !== true)
+            (async () => {
+                if ((category !== 'all' && category !== 'profile') || !showProfilePhotos) return [];
+                try {
+                    const publicUsers = await userModel.find({
+                        isPrivate: { $ne: true },
+                        isBanned: { $ne: true },
+                        photos: { $exists: true, $not: { $size: 0 } }
+                    })
+                    .select('username fullName avatar photos isVerified isAmbassador bio collegeName branch lastActive createdAt')
+                    .sort({ lastActive: -1, _id: -1 })
+                    .limit(60)
+                    .lean();
+
+                    const items = [];
+                    for (const u of publicUsers) {
+                        if (Array.isArray(u.photos) && u.photos.length > 0) {
+                            u.photos.forEach((photoUrl, idx) => {
+                                if (photoUrl) {
+                                    items.push({
+                                        _id: `user_photo_${u._id}_${idx}`,
+                                        postType: 'PROFILE_PHOTO',
+                                        user: {
+                                            _id: u._id,
+                                            username: u.username,
+                                            fullName: u.fullName || u.username,
+                                            avatar: u.avatar || photoUrl,
+                                            collegeName: u.collegeName || '',
+                                            branch: u.branch || '',
+                                            isVerified: u.isVerified || false,
+                                            isAmbassador: u.isAmbassador || false,
+                                            bio: u.bio || '',
+                                            isPrivate: false
+                                        },
+                                        media: [{ url: photoUrl, width: 800, height: 800 }],
+                                        images: [photoUrl],
+                                        confessionText: u.bio || `${u.fullName || u.username}'s profile photo`,
+                                        likesCount: 0,
+                                        likes: [],
+                                        commentCount: 0,
+                                        isAnonymous: false,
+                                        category: 'profile',
+                                        createdAt: u.lastActive || u.createdAt || new Date()
+                                    });
+                                }
+                            });
+                        }
+                    }
+                    return items;
+                } catch (userErr) {
+                    console.warn("Explore public user photos fetch error:", userErr.message);
+                    return [];
+                }
+            })(),
+            // 3. Fetch Public Posts with photos
+            (async () => {
+                if (category !== 'all') return [];
+                try {
+                    const postModel = require('../models/post.model');
+                    const posts = await postModel.find({ isHidden: false, image: { $exists: true, $ne: "" } })
+                        .populate("user", "username fullName avatar isPrivate collegeName branch isVerified isAmbassador")
+                        .sort({ _id: -1 })
+                        .limit(30)
+                        .lean();
+
+                    const items = [];
+                    for (const p of posts) {
+                        if (p.user && !p.user.isPrivate && p.image) {
+                            items.push({
+                                _id: p._id.toString(),
+                                postType: 'POST',
+                                user: p.user,
+                                media: [{ url: p.image, width: 800, height: 800 }],
+                                images: [p.image],
+                                confessionText: p.caption || '',
+                                likesCount: (p.likes || []).length,
+                                likes: p.likes || [],
+                                commentCount: (p.comments || []).length,
+                                isAnonymous: false,
+                                category: 'post',
+                                createdAt: p.createdAt || new Date()
+                            });
+                        }
+                    }
+                    return items;
+                } catch (pErr) {
+                    return [];
+                }
+            })()
+        ]);
+
+        // Combine all items and randomly mix/interleave so photos from the same user are dispersed
+        const combined = [...confessions, ...userPhotoItems, ...postItems];
         
-        const result = await cache.getOrSet(cacheKey, 60, async () => {
-            const filter = { isHidden: false };
-            if (category !== 'all') filter.category = category;
-            if (cursor) filter._id = { $lt: cursor };
+        // Smart Shuffle & Interleaving algorithm (prevents photos of same user from stacking together)
+        const mixedItems = ((items) => {
+            if (!Array.isArray(items) || items.length <= 1) return items;
+            const pool = [...items];
+            for (let i = pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pool[i], pool[j]] = [pool[j], pool[i]];
+            }
+            const result = [];
+            while (pool.length > 0) {
+                let pickedIndex = 0;
+                const lastItem = result.length > 0 ? result[result.length - 1] : null;
+                const lastUserId = lastItem?.user?._id ? String(lastItem.user._id) : (lastItem?.user ? String(lastItem.user) : null);
 
-            const confessions = await confessionModel.find(filter)
-                .select('confessionText category user isAnonymous likes commentCount poll createdAt postType media isPremiumPost mediaStatus mediaExpireAt')
-                .populate("user", "username fullName avatar")
-                .sort({ _id: -1 })
-                .limit(limit)
-                .lean();
+                if (lastUserId && pool.length > 1) {
+                    const diffIndex = pool.findIndex(item => {
+                        const uid = item?.user?._id ? String(item.user._id) : (item?.user ? String(item.user) : null);
+                        return uid !== lastUserId;
+                    });
+                    if (diffIndex !== -1) {
+                        pickedIndex = diffIndex;
+                    }
+                }
+                result.push(pool.splice(pickedIndex, 1)[0]);
+            }
+            return result;
+        })(combined);
 
-            const nextCursor = confessions.length === limit ? confessions[confessions.length - 1]._id : null;
-
-            return {
-                confessions,
-                nextCursor,
-                hasMore: confessions.length === limit
-            };
-        });
-
-        // Personalize sanitized results (since caching is global, we sanitize per-user request)
-        const sanitized = result.confessions.map(c => sanitizeConfession(c, req.user._id));
+        const sanitized = mixedItems.map(c => sanitizeConfession(c, req.user._id));
+        const nextCursor = confessions.length === limit ? confessions[confessions.length - 1]._id : null;
 
         res.status(200).json({
             confessions: sanitized,
-            nextCursor: result.nextCursor,
-            hasMore: result.hasMore
+            nextCursor,
+            hasMore: confessions.length === limit
         });
     } catch (error) {
         console.error("getExplore error:", error);
@@ -887,18 +1058,18 @@ function sanitizeConfession(confession, currentUserId) {
 
     // Convert full likes array to scalar fields — never send raw array to clients
     const likesArr = obj.likes || [];
-    obj.likesCount = likesArr.length;
+    obj.likesCount = typeof obj.likesCount === 'number' ? obj.likesCount : likesArr.length;
     obj.isLikedByMe = currentUserId
         ? likesArr.some(id => id?.toString() === currentUserId?.toString())
         : false;
     // ── Photo Confession Media Delivery (Visible to ALL Users) ─────────────
     if (Array.isArray(obj.media) && obj.media.length > 0) {
         obj.media = obj.media.map(m => ({
-            url: m.url,
-            width: m.width || 0,
-            height: m.height || 0
+            url: typeof m === 'string' ? m : m.url,
+            width: m?.width || 0,
+            height: m?.height || 0
         }));
-        obj.postType = 'PHOTO';
+        obj.postType = obj.postType || 'PHOTO';
     } else {
         obj.media = [];
     }
