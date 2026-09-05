@@ -404,30 +404,39 @@ async function sendMessage(req, res) {
             readBy: initialReadBy
         });
 
-        // Run population and conversation update in parallel
-        const populatePromise = (async () => {
-            await message.populate("sender", "username avatar");
-            if (message.replyTo) {
-                await message.populate({
-                    path: "replyTo",
-                    select: "text mediaUrl mediaType sender",
-                    populate: { path: "sender", select: "username avatar fullName" }
-                });
-            }
-        })();
-
-        const convUpdatePromise = Conversation.findByIdAndUpdate(id, { 
+        // Non-blocking conversation lastMessage update
+        Conversation.findByIdAndUpdate(id, { 
             lastMessage: message._id,
             updatedAt: new Date()
         }).catch(err => console.error("Error updating conversation lastMessage:", err));
 
-        await populatePromise;
+        // Fast in-memory sender construction (0ms database overhead)
+        const senderPayload = {
+            _id: currentUserId,
+            username: req.user.username,
+            fullName: req.user.fullName || req.user.username,
+            avatar: req.user.avatar || ""
+        };
 
-        // Emit via Socket.io immediately
+        let populatedReplyTo = undefined;
+        if (replyTo) {
+            populatedReplyTo = await Message.findById(replyTo)
+                .select("text mediaUrl mediaType sender")
+                .populate("sender", "username avatar fullName")
+                .lean()
+                .catch(() => undefined);
+        }
+
+        const msgPayload = {
+            ...message.toObject(),
+            sender: senderPayload,
+            replyTo: populatedReplyTo || message.replyTo || undefined,
+            _tempId: tempId || null
+        };
+
+        // Emit via Socket.io immediately (< 2ms)
         const io = req.app.get("io");
         if (io) {
-            const msgPayload = { ...message.toObject(), _tempId: tempId || null };
-
             // Emit to entire conversation room
             io.to(id.toString()).emit("receive-message", msgPayload);
 

@@ -148,7 +148,9 @@ io.on("connection", (socket) => {
                 // --- ONLINE STATUS TRACKING (REDIS) ---
                 await redisClient.sadd("online_users", uid).catch(() => {});
                 const currentOnline = await redisClient.smembers("online_users").catch(() => []);
-                io.emit('online-users', currentOnline); // Broadcast to all for APK compatibility
+                io.emit('online-users', currentOnline); // Broadcast to all
+                socket.emit('online-users', currentOnline); // Instant direct reply to current user
+                socket.broadcast.emit('user-online', uid);
 
                 // Decrement counter on disconnect
                 socket.once('disconnect', async () => {
@@ -165,6 +167,7 @@ io.on("connection", (socket) => {
                                     await redisClient.srem("online_users", uid).catch(() => {});
                                     const updatedOnline = await redisClient.smembers("online_users").catch(() => []);
                                     io.emit("online-users", updatedOnline); // Broadcast to all
+                                    io.emit("user-offline", uid);
                                 }
                             } catch (_) {}
                         }, 2000);
@@ -173,7 +176,10 @@ io.on("connection", (socket) => {
             } else {
                 // --- ONLINE STATUS TRACKING (IN-MEMORY FALLBACK) ---
                 memoryOnlineUsers.add(uid);
-                io.emit('online-users', Array.from(memoryOnlineUsers));
+                const memOnline = Array.from(memoryOnlineUsers);
+                io.emit('online-users', memOnline);
+                socket.emit('online-users', memOnline);
+                socket.broadcast.emit('user-online', uid);
 
                 socket.once('disconnect', async () => {
                     setTimeout(async () => {
@@ -181,7 +187,9 @@ io.on("connection", (socket) => {
                             const sockets = await io.in(uid).fetchSockets();
                             if (sockets.length === 0) {
                                 memoryOnlineUsers.delete(uid);
-                                io.emit("online-users", Array.from(memoryOnlineUsers));
+                                const updatedMemOnline = Array.from(memoryOnlineUsers);
+                                io.emit("online-users", updatedMemOnline);
+                                io.emit("user-offline", uid);
                             }
                         } catch (_) {}
                     }, 2000);
@@ -192,11 +200,27 @@ io.on("connection", (socket) => {
                 console.warn('Socket connection limit fallback to memory:', err.message);
             }
             memoryOnlineUsers.add(uid);
-            io.emit('online-users', Array.from(memoryOnlineUsers));
+            const memOnline = Array.from(memoryOnlineUsers);
+            io.emit('online-users', memOnline);
+            socket.emit('online-users', memOnline);
+            socket.broadcast.emit('user-online', uid);
         }
 
         socket.join(uid);
         socket.userId = uid;
+    });
+
+    socket.on("get-online-users", async () => {
+        try {
+            if (redisClient && redisClient.status === 'ready') {
+                const online = await redisClient.smembers("online_users").catch(() => []);
+                socket.emit("online-users", online);
+            } else {
+                socket.emit("online-users", Array.from(memoryOnlineUsers));
+            }
+        } catch (e) {
+            socket.emit("online-users", Array.from(memoryOnlineUsers));
+        }
     });
 
     const { 
@@ -207,25 +231,28 @@ io.on("connection", (socket) => {
 
     const handleJoinConversation = async (payload) => {
         const conversationId = typeof payload === 'object' ? payload.conversationId : payload;
+        const targetUserId = (typeof payload === 'object' && payload.userId) ? String(payload.userId) : socket.userId;
         if (!conversationId) return;
 
-        socket.join(conversationId);
+        const cidStr = String(conversationId);
+        socket.join(cidStr);
 
-        if (socket.userId) {
-            await setUserActiveConversation(socket.userId, socket.id, conversationId);
+        if (targetUserId) {
+            socket.userId = String(targetUserId);
+            await setUserActiveConversation(targetUserId, socket.id, cidStr);
 
             // Mark unread messages in this conversation as read
             try {
                 const MessageModel = require('./src/models/message.model');
                 const updateRes = await MessageModel.updateMany(
-                    { conversation: conversationId, sender: { $ne: socket.userId }, readBy: { $ne: socket.userId } },
-                    { $addToSet: { readBy: socket.userId } }
+                    { conversation: cidStr, sender: { $ne: targetUserId }, readBy: { $ne: targetUserId } },
+                    { $addToSet: { readBy: targetUserId } }
                 );
 
                 if (updateRes.modifiedCount > 0) {
-                    io.to(conversationId).emit("messages-read", { 
-                        conversationId, 
-                        readBy: socket.userId 
+                    io.to(cidStr).emit("messages-read", { 
+                        conversationId: cidStr, 
+                        readBy: targetUserId 
                     });
                 }
             } catch (err) {
@@ -234,7 +261,7 @@ io.on("connection", (socket) => {
         }
 
         try {
-            const conv = await require('./src/models/conversation.model').findById(conversationId).select('isAnonymousChat anonymousIdentities');
+            const conv = await require('./src/models/conversation.model').findById(cidStr).select('isAnonymousChat anonymousIdentities');
             if (conv && conv.isAnonymousChat && redisClient && redisClient.status === 'ready') {
                 const identitiesObj = {};
                 if (conv.anonymousIdentities && typeof conv.anonymousIdentities.forEach === 'function') {
@@ -242,7 +269,7 @@ io.on("connection", (socket) => {
                 } else if (conv.anonymousIdentities) {
                     Object.assign(identitiesObj, conv.anonymousIdentities);
                 }
-                await redisClient.set(`anonymous_room:${conversationId}`, JSON.stringify(identitiesObj), 'EX', 3600).catch(() => {});
+                await redisClient.set(`anonymous_room:${cidStr}`, JSON.stringify(identitiesObj), 'EX', 3600).catch(() => {});
             }
         } catch (e) {
             // Ignore background caching errors
@@ -251,12 +278,14 @@ io.on("connection", (socket) => {
 
     const handleLeaveConversation = async (payload) => {
         const conversationId = typeof payload === 'object' ? payload.conversationId : payload;
+        const targetUserId = (typeof payload === 'object' && payload.userId) ? String(payload.userId) : socket.userId;
         if (!conversationId) return;
 
-        socket.leave(conversationId);
+        const cidStr = String(conversationId);
+        socket.leave(cidStr);
 
-        if (socket.userId) {
-            await removeUserActiveConversation(socket.userId, socket.id, conversationId);
+        if (targetUserId) {
+            await removeUserActiveConversation(targetUserId, socket.id, cidStr);
         }
     };
 

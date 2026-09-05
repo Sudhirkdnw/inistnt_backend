@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'hykee-api',
       script: 'server.js',
-      instances: 1, // Reduced from 'max' to 1 to prevent memory exhaustion and server slowdown
+      instances: 'max', // Spawns worker processes equal to total available CPU cores
       exec_mode: 'cluster',
       autorestart: true,
       watch: false,

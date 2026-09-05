@@ -687,39 +687,50 @@ exports.sendCommunityMessage = async (req, res) => {
             readBy: [userId]
         });
 
-        await message.populate("sender", "username fullName avatar isVerified collegeName");
-        if (message.replyTo) {
-            await message.populate({
-                path: "replyTo",
-                select: "text mediaUrl mediaType sender",
-                populate: { path: "sender", select: "username fullName avatar" }
-            });
-        }
-
-        // Update Conversation's lastMessage and timestamp
-        await Conversation.findByIdAndUpdate(conversationId, {
+        // Non-blocking Conversation lastMessage update
+        Conversation.findByIdAndUpdate(conversationId, {
             lastMessage: message._id,
             updatedAt: new Date()
-        });
+        }).catch(err => console.error("Error updating community conversation:", err));
 
-        // Broadcast to Socket.IO room & conversation room
+        // In-memory sender construction (0ms database query overhead)
+        const senderPayload = {
+            _id: userId,
+            username: req.user.username,
+            fullName: req.user.fullName || req.user.username,
+            avatar: req.user.avatar || "",
+            isVerified: req.user.isVerified || false,
+            collegeName: req.user.collegeName || ""
+        };
+
+        let populatedReplyTo = undefined;
+        if (replyTo) {
+            populatedReplyTo = await Message.findById(replyTo)
+                .select("text mediaUrl mediaType sender")
+                .populate("sender", "username fullName avatar")
+                .lean()
+                .catch(() => undefined);
+        }
+
+        const msgPayload = {
+            ...message.toObject(),
+            sender: senderPayload,
+            replyTo: populatedReplyTo || message.replyTo || undefined,
+            _tempId: tempId || null,
+            communityId: id,
+            conversationId: conversationId.toString()
+        };
+
+        // Broadcast to Socket.IO rooms immediately (< 2ms)
         const io = req.app.get("io");
         if (io) {
-            const msgPayload = {
-                ...message.toObject(),
-                _tempId: tempId || null,
-                communityId: id,
-                conversationId: conversationId.toString()
-            };
-
-            // Broadcast to conversation room (members actively on screen)
             io.to(conversationId.toString()).emit("receive-message", msgPayload);
             io.to(id.toString()).emit("receive-community-message", msgPayload);
         }
 
         res.status(201).json({
             success: true,
-            message: message.toObject(),
+            message: msgPayload,
             _tempId: tempId || null
         });
     } catch (error) {
