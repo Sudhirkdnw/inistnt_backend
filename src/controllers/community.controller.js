@@ -550,6 +550,12 @@ exports.getCommunityMessages = async (req, res) => {
         // Reverse to chronological order for client display
         messages.reverse();
 
+        // Mark unread messages in this community conversation as read by current user
+        Message.updateMany(
+            { conversation: conversationId, sender: { $ne: userId }, readBy: { $ne: userId } },
+            { $addToSet: { readBy: userId } }
+        ).exec().catch(() => {});
+
         res.status(200).json({
             success: true,
             conversationId,
